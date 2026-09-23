@@ -1,0 +1,125 @@
+"""Everything Jarvis can do, built once per process.
+
+The voice side is per connection -- each browser tab gets its own Session,
+wake word and brain. The agent side is mostly not: there is one webcam, one
+memory file and one set of timers, whoever is talking. AgentRuntime owns
+those shared things and hands each session a ToolRegistry bound to them.
+
+    main.py lifespan  ->  AgentRuntime.start()
+    each Session      ->  runtime.registry(brain_name)   (tools for its brain)
+                          runtime.events.subscribe()     (proactive alerts)
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from datetime import datetime
+from pathlib import Path
+
+import httpx
+
+from ..config import Settings
+from .events import EventBus
+from ..domain.memory.store import MemoryStore
+from .tools.catalog import build_registry
+from .tools.registry import ToolRegistry
+
+log = logging.getLogger("jarvis.agent")
+
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+
+TOOL_PROMPT = (
+    " You can use tools. Use them whenever a question depends on live or "
+    "personal information -- the current time, the news, the weather, "
+    "anything on the web, what the camera sees, or what the user asked you "
+    "to remember -- instead of guessing. Never read out URLs or raw data; "
+    "say what it means in a sentence."
+)
+
+
+class AgentRuntime:
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.events = EventBus()
+        self.memory = MemoryStore(DATA_DIR / "memory.json")
+        self.http: httpx.AsyncClient | None = None
+        self.camera = None
+        self.motion = None
+        self._vision = None
+        #: Background jobs owned by tools (timers). Kept so they are not
+        #: garbage-collected mid-flight and can be cancelled on shutdown.
+        self.jobs: set[asyncio.Task] = set()
+
+    async def start(self) -> None:
+        self.http = httpx.AsyncClient(
+            timeout=self.settings.tool_timeout_s, follow_redirects=True,
+            headers={"User-Agent": self.settings.web_user_agent},
+        )
+        if self.settings.camera_enabled:
+            from ..domain.vision.camera import Camera, opencv_missing
+
+            missing = opencv_missing()
+            if missing:
+                log.warning("camera enabled but %s - camera tools disabled", missing)
+            else:
+                from ..domain.vision.motion import MotionConfig, MotionWatcher
+
+                s = self.settings
+                self.camera = Camera(s.camera_index, s.camera_width, s.camera_height)
+                self.motion = MotionWatcher(
+                    self.camera, self.events, fps=s.motion_fps,
+                    cooldown_s=s.motion_cooldown_s,
+                    cfg=MotionConfig(pixel_delta=s.motion_pixel_delta,
+                                     min_area=s.motion_min_area),
+                )
+                if s.motion_watch_on_start:
+                    self.motion.start()
+        log.info("agent ready: %d memories, camera %s", len(self.memory),
+                 "on" if self.camera else "off")
+
+    async def close(self) -> None:
+        for job in list(self.jobs):
+            job.cancel()
+        if self.motion is not None:
+            await self.motion.stop()
+        if self.camera is not None:
+            self.camera.close()
+        if self.http is not None:
+            await self.http.aclose()
+
+    # -- per session -------------------------------------------------------
+
+    def registry(self, brain: str) -> ToolRegistry:
+        return build_registry(self.settings, self, brain)
+
+    def system_prompt(self, with_tools: bool = True) -> str:
+        """The persona, plus tool guidance and what Jarvis remembers."""
+        prompt = self.settings.system_prompt
+        # Models confidently guess the date from their training data -- Groq's
+        # qwen said "June 24" in September rather than call get_datetime. The
+        # date costs a dozen tokens; the time still goes through the tool.
+        prompt += f" Today is {datetime.now():%A %d %B %Y}."
+        if with_tools and self.settings.tools_enabled:
+            prompt += TOOL_PROMPT
+        facts = self.memory.recent(self.settings.memory_prompt_facts)
+        if facts:
+            prompt += (" Things the user has asked you to remember: "
+                       + " ".join(f"({f.text})" for f in reversed(facts)))
+        return prompt
+
+    # -- shared services ---------------------------------------------------
+
+    @property
+    def vision(self):
+        if self._vision is None:
+            from ..domain.vision.describe import GeminiVision
+
+            self._vision = GeminiVision(self.settings)
+        return self._vision
+
+    def spawn(self, coro) -> asyncio.Task:
+        task = asyncio.create_task(coro)
+        self.jobs.add(task)
+        task.add_done_callback(self.jobs.discard)
+        return task

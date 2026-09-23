@@ -1,0 +1,46 @@
+# Install:  .venv\Scripts\python.exe -m pip install -r requirements.txt
+# run.bat does this for you on first launch.
+
+# --- server + audio plumbing ----------------------------------------------
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+pydantic-settings>=2.3
+python-dotenv>=1.0
+numpy>=1.26
+
+# --- wake word + VAD ------------------------------------------------------
+# openwakeword is unmaintained (last release Feb 2024) but works fine here,
+# including on numpy 2.x -- verified on this machine, despite the widespread
+# advice to pin numpy<2. Pinning it is actively harmful now, since current
+# scipy/scikit-learn require numpy>=2.
+#
+# It must be constructed with inference_framework="onnx": tflite-runtime has
+# no Windows wheel. It also bundles silero_vad.onnx, so the `silero-vad`
+# package (and its ~200 MB of PyTorch) is not needed.
+openwakeword==0.6.0
+onnxruntime>=1.17,<2
+
+# --- Gemini Live (default brain) ------------------------------------------
+google-genai>=2.0
+
+# --- fallback pipeline: Groq STT + LLM, edge-tts ---------------------------
+httpx>=0.27
+edge-tts>=7.0
+av>=12.0            # decodes edge-tts mp3; avoids needing ffmpeg installed
+
+# --- agent: camera + motion detection (optional) --------------------------
+# Only needed with CAMERA_ENABLED=true; without it the camera tools are simply
+# not offered to the model. Web search, timers and memory need nothing extra.
+# opencv-python>=4.10
+
+# --- dev / tests ----------------------------------------------------------
+websockets>=12      # tests/probe_*.py drive a live server over the wire
+
+# --- not installed by default ---------------------------------------------
+# Offline mode is not finished. faster-whisper (STT) and Ollama (LLM) are
+# written and would work; local TTS is the blocker -- Kokoro measured at RTF
+# 2.0-3.3 on this CPU, i.e. slower than realtime, so it is not usable here.
+#
+# faster-whisper>=1.0
+# kokoro-onnx>=0.6      # installed during evaluation; not used

@@ -1,247 +1,260 @@
 <!doctype html>
-<html lang="en" data-theme="arc">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Jarvis</title>
-    <!-- Apply the saved theme before first paint, so it never flashes. -->
+    <!-- Apply saved look before first paint, so it never flashes. -->
     <script>
-      try { const t = localStorage.getItem("jarvis-theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+      try {
+        const p = JSON.parse(localStorage.getItem("jarvis-prefs") || "{}");
+        const r = document.documentElement;
+        if (p.theme && p.theme !== "auto") r.dataset.theme = p.theme;
+        if (p.accent) r.style.setProperty("--accent", p.accent);
+        if (p.view) r.dataset.view = p.view;
+        if (p.swap) r.dataset.swap = "1";
+        if (p.split) r.style.setProperty("--split", p.split + "%");
+      } catch {}
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400..600&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Manrope:wght@500;600;700;800&family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+          "three/examples/jsm/controls/OrbitControls.js": "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/controls/OrbitControls.js"
+        }
+      }
+    </script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body data-state="OFFLINE">
-    <!-- Icon sprite (Lucide-style strokes). Referenced with <use href="#i-…">. -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
       <defs>
         <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></symbol>
-        <symbol id="i-mic-off" viewBox="0 0 24 24"><path d="M2 2l20 20"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><path d="M12 19v3"/></symbol>
-        <symbol id="i-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-4 0"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-6-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></symbol>
-        <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
-        <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
-        <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></symbol>
-        <symbol id="i-wave" viewBox="0 0 24 24"><path d="M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2"/></symbol>
-        <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></symbol>
-        <symbol id="i-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
-        <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></symbol>
-        <symbol id="i-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></symbol>
-        <symbol id="i-waves" viewBox="0 0 24 24"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></symbol>
-        <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
-        <symbol id="i-timer" viewBox="0 0 24 24"><path d="M10 2h4"/><path d="m12 14 3-3"/><circle cx="12" cy="14" r="8"/></symbol>
         <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
-        <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
-        <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></symbol>
-        <symbol id="i-check" viewBox="0 0 24 24"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></symbol>
-        <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/></symbol>
-        <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></symbol>
-        <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
-        <symbol id="i-max" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></symbol>
-        <symbol id="i-min" viewBox="0 0 24 24"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></symbol>
-        <symbol id="i-focus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></symbol>
-        <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
-        <symbol id="i-scope" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-6 4 4 5-7"/></symbol>
+        <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+        <symbol id="i-send" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></symbol>
+        <symbol id="i-robot" viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="4"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><path d="M9 12v1M15 12v1"/></symbol>
+        <symbol id="i-split" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></symbol>
+        <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4 3 8l4 4"/><path d="M3 8h14"/><path d="m17 20 4-4-4-4"/><path d="M21 16H7"/></symbol>
+        <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+        <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.3 19a10 10 0 1 1 17.4 0"/></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+        <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></symbol>
+        <symbol id="i-rec" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></symbol>
+        <!-- Chat and tool icons -->
+        <symbol id="t-timer" viewBox="0 0 24 24"><path d="M10 2h4"/><path d="m12 14 3-3"/><circle cx="12" cy="14" r="8"/></symbol>
+        <symbol id="t-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+        <symbol id="t-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+        <symbol id="t-page" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></symbol>
+        <symbol id="t-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+        <symbol id="t-app" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+        <symbol id="t-brain" viewBox="0 0 24 24"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.54Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.54Z"/></symbol>
+        <symbol id="t-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></symbol>
+        <symbol id="t-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+        <symbol id="t-video" viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4z"/></symbol>
+        <symbol id="t-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+        <symbol id="t-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></symbol>
+        <symbol id="t-down" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></symbol>
+        <symbol id="t-mic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></symbol>
+        <symbol id="t-bot" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="4"/><path d="M12 8V5"/><circle cx="12" cy="4" r="1.2"/><path d="M9.5 13v1M14.5 13v1"/></symbol>
+        <symbol id="t-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+        <symbol id="t-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+        <symbol id="t-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+        <symbol id="t-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+        <symbol id="t-alert" viewBox="0 0 24 24"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4M12 17h.01"/></symbol>
       </defs>
     </svg>
 
-    <!-- Themed, state-reactive backdrop (fx.js). Purely decorative. -->
-    <canvas id="fx" aria-hidden="true"></canvas>
-
-    <div class="shell">
+    <div class="app">
+      <!-- Top bar: brand, connection, layout, tools -->
       <header class="topbar">
-        <div class="brand">
-          <span class="logo"><svg class="ic"><use href="#i-wave"/></svg></span>
-          <h1>J.A.R.V.I.S<small>voice intelligence</small></h1>
-        </div>
+        <div class="brand"><svg class="ic"><use href="#i-robot"/></svg><b>Jarvis</b></div>
+        <span id="conn" class="conn" data-ok="0" title="Connection"><i></i><span id="conn-label">connecting</span></span>
+        <span id="brain" class="brain"></span>
+        <span class="grow"></span>
 
-        <div class="top-chips">
-          <span class="chip" title="Phase and active brain">
-            <svg class="ic"><use href="#i-cpu"/></svg>
-            <span id="phase-label">phase 2 &middot; connecting…</span>
-          </span>
-          <span id="conn" class="chip" data-ok="0">
-            <svg class="ic"><use href="#i-wifi"/></svg>
-            <span id="conn-label">connecting</span>
-          </span>
-          <span class="chip clock" title="Clock · session uptime">
-            <svg class="ic"><use href="#i-clock"/></svg>
-            <span id="clock">--:--:--</span><em id="uptime">00:00</em>
-          </span>
+        <div class="seg" role="radiogroup" aria-label="Layout">
+          <button role="radio" data-view="robot" title="Robot only (V)"><svg class="ic"><use href="#i-robot"/></svg><span>Robot</span></button>
+          <button role="radio" data-view="split" title="Side by side (V)"><svg class="ic"><use href="#i-split"/></svg><span>Split</span></button>
+          <button role="radio" data-view="chat" title="Chat only (V)"><svg class="ic"><use href="#i-chat"/></svg><span>Chat</span></button>
         </div>
-
-        <div class="top-actions">
-          <div class="theme-switch" role="radiogroup" aria-label="Theme">
-            <button class="seg" role="radio" data-theme-pick="arc" title="Arc HUD (1)">Arc</button>
-            <button class="seg" role="radio" data-theme-pick="matrix" title="Terminal (2)">Terminal</button>
-            <button class="seg" role="radio" data-theme-pick="paper" title="Paper (3)">Paper</button>
-            <button class="seg" role="radio" data-theme-pick="bento" title="Bento (4)">Bento</button>
-          </div>
-          <button id="focus-btn" class="icon-btn" title="Focus mode (Z)" aria-label="Focus mode"><svg class="ic"><use href="#i-focus"/></svg></button>
-          <button id="fs-btn" class="icon-btn" title="Full screen (F)" aria-label="Full screen"><svg class="ic"><use id="fs-icon" href="#i-max"/></svg></button>
-        </div>
+        <button id="swap-btn" class="tool" title="Swap sides" aria-label="Swap sides"><svg class="ic"><use href="#i-swap"/></svg></button>
+        <button id="mictest-btn" class="tool" title="Test microphone" aria-label="Test microphone"><svg class="ic"><use href="#i-gauge"/></svg></button>
+        <button id="settings-btn" class="tool" title="Settings (,)" aria-label="Settings"><svg class="ic"><use href="#i-gear"/></svg></button>
       </header>
 
-      <main class="hud">
-        <!-- Left column: telemetry + activity -->
-        <aside class="col col-left">
-          <section class="card metrics">
-            <h2 class="card-title"><svg class="ic"><use href="#i-gauge"/></svg>Live telemetry</h2>
+      <main class="panes">
+        <!-- The robot and everything about its current state -->
+        <section class="companion" aria-label="Jarvis">
+          <div id="robot" class="robot" aria-label="Jarvis robot. Tap to start the microphone."></div>
 
-            <div class="meter" data-kind="wake">
-              <div class="meter-head">
-                <span class="meter-icon"><svg class="ic"><use href="#i-zap"/></svg></span>
-                <div class="meter-name">Wake word<small>threshold <span id="wake-thresh-val">0.50</span></small></div>
-                <div class="meter-value">
-                  <b id="wake-val">0.00</b>
-                  <small>peak <span id="wake-peak-val">0.00</span></small>
-                </div>
-              </div>
-              <div class="bar"><div id="wake-fill"></div><i id="wake-thresh"></i><u id="wake-peak"></u></div>
+          <div class="status">
+            <p id="status" class="status-word">Sleeping</p>
+            <p id="hint" class="status-hint">Tap the robot or press the mic to start</p>
+            <p id="caption" class="caption" aria-live="polite"></p>
+            <div id="level" class="level" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
             </div>
-
-            <div class="meter" data-kind="vad">
-              <div class="meter-head">
-                <span class="meter-icon"><svg class="ic"><use href="#i-wave"/></svg></span>
-                <div class="meter-name">Voice activity<small>threshold <span id="vad-thresh-val">0.50</span></small></div>
-                <div class="meter-value">
-                  <b id="vad-val">0.00</b>
-                  <small id="vad-state">silent</small>
-                </div>
-              </div>
-              <div class="bar"><div id="vad-fill"></div><i id="vad-thresh"></i></div>
-            </div>
-
-            <div class="meter" data-kind="level">
-              <div class="meter-head">
-                <span class="meter-icon"><svg class="ic"><use href="#i-volume"/></svg></span>
-                <div class="meter-name">Input level<small>&minus;60 to 0 dBFS</small></div>
-                <div class="meter-value">
-                  <b id="meter-db">&minus;&infin;</b>
-                  <small>dB</small>
-                </div>
-              </div>
-              <div class="bar"><div id="meter-fill" data-hot="0"></div></div>
-            </div>
-
-            <div class="scope-wrap">
-              <div class="scope-legend">
-                <span><svg class="ic"><use href="#i-scope"/></svg>last 20 s</span>
-                <span><i class="k-wake"></i>wake</span>
-                <span><i class="k-vad"></i>voice</span>
-                <span><i class="k-lvl"></i>level</span>
-              </div>
-              <canvas id="scope"></canvas>
-            </div>
-
-            <div class="stat-grid">
-              <div class="stat"><svg class="ic"><use href="#i-up"/></svg><span>Sent</span><b id="stat-sent">&mdash;</b></div>
-              <div class="stat"><svg class="ic"><use href="#i-down"/></svg><span>Received</span><b id="stat-recv">&mdash;</b></div>
-              <div class="stat"><svg class="ic"><use href="#i-x-circle"/></svg><span>Dropped</span><b id="stat-dropped">&mdash;</b></div>
-              <div class="stat"><svg class="ic"><use href="#i-waves"/></svg><span>Noise</span><b id="stat-noise">&mdash;</b></div>
-              <div class="stat"><svg class="ic"><use href="#i-alert"/></svg><span>Underruns</span><b id="stat-underruns">&mdash;</b></div>
-              <div class="stat"><svg class="ic"><use href="#i-timer"/></svg><span>Round trip</span><b id="stat-rtt">&mdash;</b></div>
-            </div>
-          </section>
-
-          <section class="card panel">
-            <div class="tabs">
-              <button class="tab active" data-tab="log"><svg class="ic"><use href="#i-list"/></svg>Activity</button>
-              <button class="tab" data-tab="tune"><svg class="ic"><use href="#i-sliders"/></svg>Tuning</button>
-              <button class="tab" data-tab="check"><svg class="ic"><use href="#i-check"/></svg>Checklist</button>
-            </div>
-
-            <div id="tab-log" class="tabpane active">
-              <div id="log" class="log"></div>
-            </div>
-
-            <div id="tab-tune" class="tabpane">
-              <p class="note">
-                Changes apply instantly &mdash; no restart. Once a value feels
-                right, copy it into <code>.env</code>.
-              </p>
-              <div id="sliders"></div>
-            </div>
-
-            <div id="tab-check" class="tabpane">
-              <h2>Phase 1 acceptance</h2>
-              <ol class="checklist">
-                <li>Say <strong>&ldquo;Jarvis, what is Python?&rdquo;</strong>
-                  &mdash; you should hear a spoken answer</li>
-                <li><strong>Interrupt it</strong> mid-answer &mdash; it should stop
-                  within a moment and listen</li>
-                <li>Ask a follow-up with <strong>no</strong> wake word</li>
-                <li>Try Hindi: <strong>&ldquo;Jarvis, Python kya hai?&rdquo;</strong></li>
-                <li>Talk normally for 5 minutes &mdash; count false wakes</li>
-              </ol>
-              <p class="note">
-                &ldquo;jarvis&rdquo;, &ldquo;hey jarvis&rdquo;, &ldquo;ok
-                jarvis&rdquo; and &ldquo;hi jarvis&rdquo; all work &mdash; measured
-                at 0.99+ each, while &ldquo;travis&rdquo; and &ldquo;harvest&rdquo;
-                score under 0.03.
-              </p>
-            </div>
-          </section>
-        </aside>
-
-        <!-- Centre: the dot-matrix core -->
-        <section class="stage">
-          <div class="core" id="core">
-            <div id="orb" data-state="OFFLINE"><span></span></div>
-            <div class="sun" aria-hidden="true"></div>
-            <span class="ring r1" aria-hidden="true"></span>
-            <span class="ring r2" aria-hidden="true"></span>
-            <span class="ring r3" aria-hidden="true"></span>
-            <span class="ring r4" aria-hidden="true"></span>
-            <span class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-            <div id="grid" class="dot-grid" data-state="OFFLINE" aria-hidden="true"></div>
-          </div>
-
-          <div id="state" data-state="OFFLINE"><i></i><span id="state-label">OFFLINE</span></div>
-          <p id="hint" class="hint">Start the mic, then say &ldquo;Hey Jarvis&rdquo;</p>
-
-          <div id="caption" class="caption" data-role="" aria-live="polite">
-            <small id="caption-role"></small>
-            <p id="caption-text"></p>
           </div>
 
           <div class="controls">
-            <button id="mic-btn" data-on="0">
-              <svg class="ic"><use id="mic-icon" href="#i-mic"/></svg>
-              <span id="mic-label">Start mic</span>
+            <button id="mic-btn" class="btn primary" data-on="0" title="Microphone (M)">
+              <svg class="ic"><use href="#i-mic"/></svg><span id="mic-label">Start mic</span>
             </button>
-            <button id="talk-btn" class="ghost" data-on="0">
-              <svg class="ic"><use href="#i-chat"/></svg><span id="talk-label">Talk</span>
+            <button id="talk-btn" class="btn" data-on="0" title="Talk mode, no wake word (T)">
+              <svg class="ic"><use href="#i-chat"/></svg><span>Talk mode</span>
             </button>
-            <button id="stop-btn" class="ghost">
-              <svg class="ic"><use href="#i-stop"/></svg><span>Stop</span>
+            <button id="stop-btn" class="btn icon" title="Stop speaking (Esc)" aria-label="Stop speaking">
+              <svg class="ic"><use href="#i-stop"/></svg>
             </button>
           </div>
         </section>
 
-        <!-- Right column: the conversation -->
-        <aside class="col col-right">
-          <section class="card convo-card">
-            <h2 class="card-title"><svg class="ic"><use href="#i-chat"/></svg>Conversation<span id="turns" class="count">0</span></h2>
-            <div id="convo" class="convo">
-              <p class="convo-empty">
-                <svg class="ic"><use href="#i-mic"/></svg>
-                Say &ldquo;Jarvis&rdquo; and ask something.
-              </p>
-            </div>
-          </section>
-        </aside>
-      </main>
+        <div id="divider" class="divider" role="separator" aria-orientation="vertical" aria-label="Resize panels" tabindex="0" title="Drag to resize · double-click to reset"></div>
 
-      <footer class="statusbar">
-        <span><kbd>1</kbd>–<kbd>4</kbd> theme</span>
-        <span><kbd>F</kbd> full screen</span>
-        <span><kbd>Z</kbd> focus</span>
-        <span class="grow"></span>
-        <span id="theme-name">arc hud</span>
-      </footer>
+        <!-- The conversation -->
+        <section class="convo-panel" aria-label="Conversation">
+          <header class="panel-bar">
+            <h1>Conversation</h1>
+            <span id="mini-status" class="mini-status"><i></i><span>Sleeping</span></span>
+            <span class="grow"></span>
+            <button id="clear-btn" class="link" title="Clear the screen (the server keeps its history)">Clear</button>
+          </header>
+
+          <div id="convo" class="convo" aria-live="polite">
+            <div id="empty" class="empty">
+              <div class="empty-icon"><svg class="ic"><use href="#i-chat"/></svg></div>
+              <p class="empty-title">Say &ldquo;Hey Jarvis&rdquo; or type below</p>
+              <div class="chips">
+                <button class="chip" data-ask="What can you do?">What can you do?</button>
+                <button class="chip" data-ask="Set a timer for 5 minutes">Set a 5-minute timer</button>
+                <button class="chip" data-ask="What's the time?">What's the time?</button>
+                <button class="chip" data-ask="Python kya hai?">Python kya hai?</button>
+              </div>
+            </div>
+          </div>
+
+          <form id="composer" class="composer" autocomplete="off">
+            <button id="composer-mic" class="btn icon ghost" type="button" title="Microphone (M)" aria-label="Microphone"><svg class="ic"><use href="#i-mic"/></svg></button>
+            <textarea id="input" rows="1" placeholder="Type a message…  ( / to focus )" aria-label="Message"></textarea>
+            <button id="send-btn" class="btn primary icon" type="submit" aria-label="Send" disabled><svg class="ic"><use href="#i-send"/></svg></button>
+          </form>
+        </section>
+      </main>
     </div>
+
+    <!-- Settings drawer -->
+    <div id="scrim" class="scrim" hidden></div>
+    <aside id="settings" class="drawer" aria-label="Settings" aria-hidden="true">
+      <header class="drawer-bar">
+        <h2>Settings</h2>
+        <button class="tool" data-close aria-label="Close settings"><svg class="ic"><use href="#i-x"/></svg></button>
+      </header>
+      <div class="drawer-body">
+        <section class="group">
+          <h3>Layout</h3>
+          <label class="row"><span>View</span>
+            <select data-pref="view"><option value="split">Side by side</option><option value="robot">Robot only</option><option value="chat">Chat only</option></select>
+          </label>
+          <label class="row"><span>Robot on the right</span><input type="checkbox" class="switch" data-pref="swap" /></label>
+          <label class="row col"><span>Robot panel width <b data-out="split"></b></span>
+            <input type="range" min="25" max="70" step="1" data-pref="split" />
+          </label>
+        </section>
+
+        <section class="group">
+          <h3>Microphone</h3>
+          <label class="row col"><span>Input device</span>
+            <select id="device-select"><option value="">System default</option></select>
+          </label>
+          <button id="drawer-mictest" class="btn wide" type="button"><svg class="ic"><use href="#i-gauge"/></svg>Test microphone &amp; speakers</button>
+          <label class="row"><span>Wake chirp</span><input type="checkbox" class="switch" data-pref="chirp" /></label>
+        </section>
+
+        <section class="group">
+          <h3>Expressions</h3>
+          <label class="row"><span>Gestures while talking<small>Hand and head moves as Jarvis speaks</small></span>
+            <select data-pref="talkStyle"><option value="lively">Lively</option><option value="calm">Calm</option><option value="off">Off</option></select>
+          </label>
+          <p class="sub">Mood <small>tap to show for a moment</small></p>
+          <div class="btn-grid" id="mood-grid"></div>
+          <p class="sub">Gestures</p>
+          <div class="btn-grid" id="gesture-grid"></div>
+          <p class="sub">Arms</p>
+          <div class="seg wide" role="radiogroup" aria-label="Arm mode" id="arm-mode">
+            <button type="button" role="radio" data-arm="auto">Auto</button>
+            <button type="button" role="radio" data-arm="manual">Manual</button>
+          </div>
+          <div class="btn-grid" id="pose-grid"></div>
+          <small class="hint-line" id="arm-hint">Auto: arms follow the mood and talking. Tap a pose to strike it briefly.</small>
+        </section>
+
+        <section class="group">
+          <h3>Voice <small id="voice-note">connect to change</small></h3>
+          <div id="tunables"></div>
+          <button id="tunables-reset" class="link" type="button">Reset to .env values</button>
+        </section>
+
+        <section class="group">
+          <h3>Appearance</h3>
+          <label class="row"><span>Theme</span>
+            <select data-pref="theme"><option value="auto">Match system</option><option value="light">Light</option><option value="dark">Dark</option></select>
+          </label>
+          <div class="row"><span>Accent &amp; robot glow</span>
+            <div class="swatches" id="swatches"></div>
+          </div>
+          <label class="row"><span>Robot eyes</span>
+            <select data-pref="look"><option value="wander">Look around</option><option value="cursor">Follow cursor</option><option value="center">Look ahead</option></select>
+          </label>
+          <label class="row"><span>Idle fidgets</span><input type="checkbox" class="switch" data-pref="fidgets" /></label>
+          <label class="row"><span>Robot shadow</span><input type="checkbox" class="switch" data-pref="shadow" /></label>
+          <label class="row"><span>Live caption under robot</span><input type="checkbox" class="switch" data-pref="caption" /></label>
+          <label class="row"><span>Show tool details</span><input type="checkbox" class="switch" data-pref="toolDetails" /></label>
+        </section>
+
+        <section class="group">
+          <h3>Keyboard</h3>
+          <dl class="keys">
+            <dt><kbd>M</kbd></dt><dd>Mic on / off</dd>
+            <dt><kbd>T</kbd></dt><dd>Talk mode</dd>
+            <dt><kbd>Esc</kbd></dt><dd>Stop speaking</dd>
+            <dt><kbd>V</kbd></dt><dd>Next layout</dd>
+            <dt><kbd>/</kbd></dt><dd>Type a message</dd>
+            <dt><kbd>,</kbd></dt><dd>Settings</dd>
+          </dl>
+        </section>
+
+        <section class="group">
+          <button id="prefs-reset" class="link danger" type="button">Reset all settings</button>
+        </section>
+      </div>
+    </aside>
+
+    <!-- Mic test -->
+    <dialog id="mictest" class="dialog" aria-labelledby="mt-title">
+      <header class="drawer-bar">
+        <h2 id="mt-title">Microphone test</h2>
+        <button class="tool" data-close aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button>
+      </header>
+      <div class="mt-body">
+        <div class="mt-meter">
+          <div class="mt-bar"><div id="mt-fill"></div><i id="mt-peak"></i><u style="left:36.7%" title="Speech should reach here"></u></div>
+          <div class="mt-scale"><span>−60 dB</span><b><span id="mt-db">−∞</span> dB</b><span>0 dB</span></div>
+        </div>
+        <ul class="checks">
+          <li data-check="device" data-status="wait"><b>Microphone</b><span>…</span></li>
+          <li data-check="level" data-status="wait"><b>Level</b><span>…</span></li>
+          <li data-check="rate" data-status="wait"><b>Sample rate</b><span>…</span></li>
+          <li data-check="aec" data-status="wait"><b>Echo cancellation</b><span>…</span></li>
+        </ul>
+        <div class="mt-actions">
+          <button id="mt-record" class="btn" type="button" disabled><svg class="ic rec"><use href="#i-rec"/></svg><span id="mt-record-label">Record 3 seconds</span></button>
+          <button id="mt-speaker" class="btn" type="button"><svg class="ic"><use href="#i-volume"/></svg>Test speakers</button>
+        </div>
+        <audio id="mt-playback" controls hidden></audio>
+        <p class="note">Jarvis stops listening while this is open.</p>
+      </div>
+    </dialog>
 
     <script type="module" src="./app.js"></script>
   </body>

@@ -71,6 +71,14 @@ class Brain(ABC):
         """
         return False
 
+    async def ask(self, text: str) -> bool:
+        """Answer a typed message, spoken like any other reply.
+
+        The session only calls this while nothing else is in flight. Returns
+        False if this brain cannot take text, or is busy.
+        """
+        return False
+
     @property
     def handles_turn_detection(self) -> bool:
         """True if the brain decides when the user stopped talking.

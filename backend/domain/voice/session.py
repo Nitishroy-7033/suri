@@ -725,6 +725,34 @@ class Session:
                 self._stream_tone(self.active_turn_id,
                                   float(msg.get("seconds", 3.0)))
             )
+        elif kind == "text":
+            text = str(msg.get("text") or "").strip()[:2000]
+            if not text:
+                return
+            if self.brain is None:
+                await self.send({"t": "error", "code": "no_brain", "fatal": False,
+                                 "message": "no brain available to answer"})
+                return
+            # A typed message replaces whatever is in flight, like a barge-in.
+            if not self.fsm.is_(State.IDLE, State.FOLLOW_UP_WINDOW):
+                self._cancel_drain()
+                await self.cancel_turn("superseded")
+                await self.brain.cancel("superseded")
+                self._drain_utterance()
+            await self.fsm.to(State.THINKING, "typed")
+            try:
+                accepted = await self.brain.ask(text)
+            except Exception as exc:
+                # Quota, network, auth: report it, but keep the session alive.
+                log.exception("typed message failed")
+                await self.send({"t": "error", "code": "brain", "fatal": False,
+                                 "message": str(exc)[:200]})
+                await self.fsm.to(State.IDLE, "ask_failed")
+                return
+            if not accepted:
+                await self.send({"t": "error", "code": "busy", "fatal": False,
+                                 "message": "still finishing the last reply"})
+                await self.fsm.to(State.IDLE, "ask_declined")
         elif kind == "stop_audio":
             self._cancel_drain()
             await self.cancel_turn("user_stop")

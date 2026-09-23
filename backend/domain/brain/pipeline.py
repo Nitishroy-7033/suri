@@ -253,6 +253,26 @@ class PipelineBrain(Brain):
         except Exception as exc:
             await self._turn_failed(exc)
 
+    async def ask(self, text: str) -> bool:
+        if self.turn is not None and self.turn.task and not self.turn.task.done():
+            return False
+        self.active_turn_id += 1
+        turn = Turn(id=self.active_turn_id)
+        self.turn = turn
+        turn.task = asyncio.create_task(self._run_text(turn, text))
+        return True
+
+    async def _run_text(self, turn: Turn, text: str) -> None:
+        # No transcript echo: the browser already shows what was typed.
+        t0 = time.perf_counter()
+        try:
+            self.history.add_user(text)
+            await self._respond(turn, t0, t0)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await self._turn_failed(exc)
+
     async def _respond(self, turn: Turn, t0: float, t_stt: float) -> None:
         if self.agent is not None:
             # Rebuilt per turn: "remember that..." should apply at once.
@@ -285,7 +305,7 @@ class PipelineBrain(Brain):
         await self.send_json({"t": "tool_result", "turn_id": turn.id,
                               "name": call.name, "ok": outcome.ok,
                               "ms": round(outcome.ms),
-                              "preview": outcome.output[:200]})
+                              "preview": outcome.output[:1200]})
         return outcome
 
     async def _speak_reply(self, turn: Turn, t_stt: float) -> None:

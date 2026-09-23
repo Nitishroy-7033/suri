@@ -210,6 +210,18 @@ class GeminiLiveBrain(Brain):
         )
         return True
 
+    async def ask(self, text: str) -> bool:
+        if self._turn_open or self._tool_tasks:
+            return False
+        await self._ensure_session()
+        self.require_wake = False  # typed on purpose; there is nothing to confirm
+        self._last_activity = time.monotonic()
+        await self._session.send_client_content(
+            turns={"role": "user", "parts": [{"text": text}]},
+            turn_complete=True,
+        )
+        return True
+
     async def maybe_idle_close(self) -> bool:
         """Drop a session unused for a while, so it stops costing quota."""
         if self._session is None:
@@ -377,7 +389,7 @@ class GeminiLiveBrain(Brain):
             outcome_ok, output, ms = outcome.ok, outcome.output, outcome.ms
         await self.send_json({"t": "tool_result", "turn_id": self.turn_id,
                               "name": name, "ok": outcome_ok, "ms": round(ms),
-                              "preview": output[:200]})
+                              "preview": output[:1200]})
         if self._session is None:
             return  # disconnected while the tool ran; nobody to tell
         key = "result" if outcome_ok else "error"

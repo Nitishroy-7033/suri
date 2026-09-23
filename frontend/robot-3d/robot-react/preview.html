@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Engine preview</title>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.184.0/build/three.module.js","three/examples/jsm/controls/OrbitControls.js":"https://unpkg.com/three@0.184.0/examples/jsm/controls/OrbitControls.js"},"integrity":{"https://unpkg.com/three@0.184.0/build/three.module.js":"sha384-8FCZ1eVO6it4+pbec2aDtnTrwjWXZLJRC+MAGCIPDgsYnUrl/E0A2YlF8ioMKI/J","https://unpkg.com/three@0.184.0/build/three.core.js":"sha384-dw2ooPewaEIrAgl6oFDBmmBWCE9oW9LxRGcfwZ0hLvEprzo202wXl7vCYHRlSnOT","https://unpkg.com/three@0.184.0/examples/jsm/controls/OrbitControls.js":"sha384-4rziNxOBZKQ69i+w+f89KJ55TCYquwchVbByQwmaOeIOXdOU2PLDn3kOfXHwIJC9"}}</script>
+<style>html,body{margin:0;height:100%}#host{height:100vh}</style></head>
+<body><div id="host"></div>
+<script type="module">
+import { createRobot } from './robotEngine.js';
+const bot = createRobot(document.getElementById('host'), { background: '#e8ebee', mood: 'happy' });
+window.bot = bot;
+setTimeout(() => bot.play('wave'), 3200);
+</script></body></html>

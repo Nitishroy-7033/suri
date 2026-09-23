@@ -1,0 +1,43 @@
+# Exported by three-d-stage
+newmtl shell_white
+Kd 0.8963 0.8796 0.8388
+Ks 0.2000 0.2000 0.2000
+Ns 124
+d 1.0000
+
+newmtl trim_grey
+Kd 0.5520 0.5711 0.5972
+Ks 0.2000 0.2000 0.2000
+Ns 110
+d 1.0000
+
+newmtl screen_glass
+Kd 0.0037 0.0044 0.0060
+Ks 0.2000 0.2000 0.2000
+Ns 176
+d 1.0000
+
+newmtl glow_blue
+Kd 0.0130 0.2462 1.0000
+Ks 0.2000 0.2000 0.2000
+Ns 140
+d 1.0000
+
+newmtl tongue
+Kd 1.0000 0.1946 0.3325
+Ks 0.2000 0.2000 0.2000
+Ns 120
+d 1.0000
+
+newmtl ear_glow
+Kd 0.0130 0.2462 1.0000
+Ks 0.2000 0.2000 0.2000
+Ns 140
+d 1.0000
+
+newmtl antenna_glow
+Kd 0.0130 0.2462 1.0000
+Ks 0.2000 0.2000 0.2000
+Ns 150
+d 1.0000
+

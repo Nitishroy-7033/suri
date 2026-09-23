@@ -9,8 +9,9 @@
 // for a 16 kHz AudioContext does not disable it.
 
 export class MicCapture {
-  constructor({ sampleRate = 16000, onFrame = null } = {}) {
+  constructor({ sampleRate = 16000, onFrame = null, deviceId = null } = {}) {
     this.sampleRate = sampleRate;
+    this.deviceId = deviceId;  // null = the browser's default microphone
     this.onFrame = onFrame;
     this.ctx = null;
     this.stream = null;
@@ -23,6 +24,7 @@ export class MicCapture {
   async start() {
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
+        ...(this.deviceId ? { deviceId: { exact: this.deviceId } } : {}),
         channelCount: 1,
         echoCancellation: true,
         noiseSuppression: true,

@@ -44,6 +44,15 @@ playwright>=1.45
 psutil>=5.9         # CPU, RAM, disk, battery, network, processes
 nvidia-ml-py>=12    # NVIDIA GPU load/VRAM/temperature; harmless without one
 
+# --- the holographic workshop (frontend/holo, domain/holo, fs, pc, forge) --
+# The 3D hologram and hand tracking run in the browser (Three.js, MediaPipe
+# from a CDN): nothing to install for those.
+send2trash>=1.8     # "delete" means the Recycle Bin, never gone for good
+pypdf>=4.0          # reading a PDF you ask Jarvis about
+pycaw>=20240210     # volume and mute (Windows audio)
+comtypes>=1.4       # ...which pycaw drives through COM
+screen-brightness-control>=0.24  # screen brightness
+
 # --- other model providers (optional) -------------------------------------
 # OpenAI, Groq, OpenRouter, LM Studio and Ollama need nothing extra (httpx).
 # Only if an agent is set to provider=anthropic:

@@ -3,6 +3,7 @@
     runtime.models.get("web_agent")          -> a FallbackModel (ChatModel-like)
     runtime.models.available("vision_agent") -> None, or why it can't run
     runtime.models.describe()                -> per-agent stats for the HUD
+    runtime.models.reload()                  -> after the Setup page changed a profile
 
 Each call through the hub is recorded, so the diagnostics view gets tokens
 per second, latency and error counts for every agent at no extra cost.
@@ -14,23 +15,29 @@ import logging
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import get_args
 
 import httpx
 
+from ...config import ModelProfile, Settings
 from .base import ChatModel, ModelError, Usage
 from .fallback import FallbackModel
 
-if TYPE_CHECKING:
-    from ...config import ModelProfile, Settings
-
 log = logging.getLogger("jarvis.models")
 
-AGENTS = ("voice_llm", "web_agent", "vision_agent", "diagnostics_agent")
+
+def agent_names(settings_cls: type[Settings] = Settings) -> tuple[str, ...]:
+    """Every agent is a ModelProfile field on Settings, in declaration order,
+    so a new agent needs only its field (and a default in _builtin_profiles)."""
+    return tuple(name for name, f in settings_cls.model_fields.items()
+                 if f.annotation is ModelProfile or ModelProfile in get_args(f.annotation))
+
+
+AGENTS = agent_names()
 LOCAL_PROVIDERS = ("ollama", "openai_compat")
 
 
-def build_model(profile: "ModelProfile", settings: "Settings",
+def build_model(profile: ModelProfile, settings: Settings,
                 http: httpx.AsyncClient | None = None) -> ChatModel:
     p = profile.provider
     if p in ("openai", "groq", "openrouter", "openai_compat"):
@@ -73,10 +80,13 @@ class AgentStats:
 
 
 class ModelHub:
-    def __init__(self, settings: "Settings") -> None:
+    def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._http: httpx.AsyncClient | None = None
         self._models: dict[tuple[str, bool], FallbackModel] = {}
+        #: What each chain was built from, keys included: models read their
+        #: key live, but Gemini's client is made with it once.
+        self._built: dict[tuple[str, bool], list] = {}
         self.stats: dict[str, AgentStats] = {a: AgentStats() for a in AGENTS}
 
     @property
@@ -85,7 +95,7 @@ class ModelHub:
             self._http = httpx.AsyncClient(http2=False)
         return self._http
 
-    def chain(self, agent: str, local_only: bool = False) -> list["ModelProfile"]:
+    def chain(self, agent: str, local_only: bool = False) -> list[ModelProfile]:
         profile = self.settings.agent_profile(agent)
         chain = [profile.model_copy(update={"fallback": []})]
         todo = list(profile.fallback)
@@ -105,7 +115,42 @@ class ModelHub:
                 raise ModelError("none", 0, f"{agent} has no local model configured")
             models = [build_model(p, self.settings, self.http) for p in profiles]
             self._models[key] = FallbackModel(models, agent, self._recorder(agent))
+            self._built[key] = self._fingerprint(profiles)
         return self._models[key]
+
+    def reload(self) -> list[str]:
+        """Rebuild every chain already handed out from the current settings.
+
+        The FallbackModel objects are kept and refilled, because their
+        holders keep them: a session's pipeline for its whole life, the web
+        agent and vision for the process. Returns the agents whose chain
+        changed; their stats start over, so the HUD's tokens per second is
+        never an average across two different models."""
+        changed = []
+        for (agent, local_only), fm in list(self._models.items()):
+            try:
+                profiles = self.chain(agent, local_only)
+            except KeyError:
+                continue
+            if not profiles:
+                log.warning("%s: no local model left in its chain; keeping the old one", agent)
+                continue
+            built = self._fingerprint(profiles)
+            if built == self._built.get((agent, local_only)):
+                continue
+            fm.replace([build_model(p, self.settings, self.http) for p in profiles])
+            self._built[(agent, local_only)] = built
+            if not local_only:
+                changed.append(agent)
+        for agent in changed:
+            self.stats[agent] = AgentStats()
+            log.info("model %-17s now %s", agent,
+                     " -> ".join(f"{p.provider}:{p.model}" for p in self.chain(agent)))
+        return changed
+
+    def _fingerprint(self, profiles: list[ModelProfile]) -> list:
+        return [(p.model_dump(), p.model_key or self.settings.provider_key(p.provider or ""))
+                for p in profiles]
 
     def available(self, agent: str) -> str | None:
         try:
@@ -114,9 +159,9 @@ class ModelHub:
             return str(exc)
 
     def _recorder(self, agent: str):
-        stats = self.stats.setdefault(agent, AgentStats())
-
         def record(model: ChatModel, usage: Usage | None, exc: Exception | None) -> None:
+            # Looked up per call: reload() may have started this agent over.
+            stats = self.stats.setdefault(agent, AgentStats())
             stats.calls += 1
             stats.last_model = model.describe()
             if exc is not None:

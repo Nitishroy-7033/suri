@@ -11,10 +11,13 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import setup_api
+from . import workshop_api
+from .core import security
 from .core.runtime import AgentRuntime
 from .config import settings
 from .domain.diagnostics.metrics import log_ring
@@ -72,6 +75,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Jarvis", lifespan=lifespan)
+app.add_middleware(security.HostGuard,
+                   hostnames=security.allowed_hostnames(settings.host, settings.allowed_hosts))
+
+
+def require_token(request: Request) -> None:
+    """For routes that read files or change the machine: only Jarvis's own
+    page has the token (it arrives in the "ready" message)."""
+    given = request.headers.get("x-jarvis-token") or request.query_params.get("token")
+    if not security.token_ok(given):
+        raise HTTPException(401, "missing or wrong token")
+
+
+# The Setup page: models, keys, Ollama, .env. All of it reads or writes keys.
+app.include_router(setup_api.router, dependencies=[Depends(require_token)])
 
 
 @app.get("/healthz")
@@ -90,6 +107,12 @@ async def list_tools() -> dict:
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
+    # WebSockets are not covered by CORS: without this, any site open in the
+    # browser could connect and talk to Jarvis.
+    if not security.origin_ok(ws.headers.get("origin"), ws.headers.get("host")):
+        log.warning("refused a WebSocket from origin %s", ws.headers.get("origin"))
+        await ws.close(code=1008)
+        return
     await ws.accept()
     log.info("client connected from %s", ws.client)
     await Session(ws, settings, ws.app.state.agent).run()
@@ -109,6 +132,12 @@ class FrontendFiles(StaticFiles):
         response.headers["Cache-Control"] = "no-cache"
         return response
 
+
+# The workshop: files, the model library (token-guarded) and your saved
+# models' files. Before "/" so the frontend mount does not swallow them.
+app.include_router(workshop_api.router)
+app.mount("/models", StaticFiles(directory=workshop_api.models_dir(), check_dir=False),
+          name="models")
 
 # Mounted last so /ws and /healthz win. html=True serves index.html at /.
 app.mount("/", FrontendFiles(directory=FRONTEND_DIR, html=True), name="frontend")

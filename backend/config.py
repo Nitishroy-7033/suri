@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # --- server ---
     host: str = "127.0.0.1"
     port: int = 8080
+    # Extra names this server may be reached by, comma-separated. Requests
+    # naming any other host are refused (DNS rebinding); see core/security.py.
+    allowed_hosts: str = ""
     log_level: str = "INFO"
     debug_dump_audio: bool = False
 
@@ -66,6 +69,9 @@ class Settings(BaseSettings):
     # Small and local on purpose: it phrases status reports and alerts, and
     # must keep working when the cloud quota is gone.
     diagnostics_agent: ModelProfile | None = None
+    # Reads a file you asked about (text, PDF, image) and answers. Needs a
+    # model that takes images; defaults to the vision agent's.
+    file_agent: ModelProfile | None = None
 
     # --- mode selection ---
     jarvis_mode: BrainMode = "auto"
@@ -288,6 +294,36 @@ class Settings(BaseSettings):
     diag_disk_low_gb: float = 5.0
     diag_ping_host: str = "1.1.1.1"
 
+    # --- agent: the holographic workshop (domain/holo, fs, pc, forge) ---
+    # The full-screen hologram: 3D models, floating panels, hand gestures.
+    holo_enabled: bool = True
+    # Browse and preview files on every drive, ask about them, delete to the
+    # Recycle Bin. Off by default: it lets the AI read files you point it at.
+    # System folders, AppData and secrets are refused regardless (fs/access.py).
+    fs_enabled: bool = False
+    fs_deny: str = ""  # more to refuse: comma-separated folder paths or name globs
+    fs_read_max_chars: int = 20000  # what fs_ask hands the model from a text/PDF
+    fs_image_max_mb: float = 4.0
+    fs_upload_max_mb: float = 50.0  # models saved to the library from the page
+    # Volume, brightness and media keys. Windows only.
+    pc_controls_enabled: bool = True
+    # Finding and generating 3D models. Each provider is used only when set up:
+    # "polypizza" needs POLY_PIZZA_API_KEY (free), "tripo"/"meshy" their keys
+    # (paid credits), "local" FORGE_LOCAL_URL (your own TRELLIS/Hunyuan3D server).
+    forge_providers: str = "local,tripo,meshy"  # order tried by forge_build
+    poly_pizza_api_key: str = ""
+    tripo_api_key: str = ""
+    meshy_api_key: str = ""
+    forge_local_url: str = ""
+    # Local image-to-3D servers need a picture, so a text request is first
+    # drawn by this Gemini image model (GEMINI_API_KEY). Empty = local
+    # generation only works from the camera or a dropped image.
+    forge_image_model: str = ""
+    forge_timeout_s: float = 600.0
+    forge_sync_wait_s: float = 5.0
+    # Paid generation needs the user's explicit yes first. Leave this on.
+    forge_require_confirm: bool = True
+
     # --- resilience ---
     fallback_after_failures: int = 2
     fallback_cooldown_s: int = 120
@@ -324,6 +360,8 @@ class Settings(BaseSettings):
                    for m in dict.fromkeys([self.web_agent_groq_model or self.groq_llm_model,
                                            self.groq_llm_fallback_model]) if m]),
             "vision_agent": ModelProfile(provider="gemini", model=self.vision_model),
+            "file_agent": ModelProfile(provider="gemini", model=self.vision_model,
+                                       max_tokens=400),
             "diagnostics_agent": ModelProfile(provider="ollama", model="qwen2.5:1.5b",
                                               temperature=0.4, max_tokens=120),
         }

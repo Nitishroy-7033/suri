@@ -1,0 +1,89 @@
+{
+  "_about": "The seed model library. Free sample models from the Khronos glTF repositories, loaded from GitHub on first use (the browser caches them). Models you save, find or generate go in data/models/catalog.json instead. `parts` are optional notes Jarvis can read when you point at a part.",
+  "models": [
+    {
+      "id": "engine",
+      "name": "Two-cylinder engine",
+      "aliases": ["engine", "motor", "2 cylinder engine", "twin engine", "piston engine"],
+      "src": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/2CylinderEngine/glTF-Binary/2CylinderEngine.glb",
+      "license": "unstated: Khronos glTF test model",
+      "credit": "Khronos glTF-Sample-Models; JT to COLLADA conversion by Okino Computer Graphics",
+      "about": "A two-cylinder reciprocating engine assembly with pistons, connecting rods, crankshaft and housing. Good for exploding."
+    },
+    {
+      "id": "gearbox",
+      "name": "Gearbox assembly",
+      "aliases": ["gearbox", "gear box", "transmission", "gears"],
+      "src": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/GearboxAssy/glTF-Binary/GearboxAssy.glb",
+      "license": "unstated: Khronos glTF test model",
+      "credit": "Khronos glTF-Sample-Models; JT to COLLADA conversion by Okino Computer Graphics",
+      "about": "A multi-stage gearbox with shafts, gears, bearings and casing."
+    },
+    {
+      "id": "buggy",
+      "name": "Buggy",
+      "aliases": ["buggy", "car", "dune buggy", "vehicle", "kart"],
+      "src": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/Buggy/glTF-Binary/Buggy.glb",
+      "license": "unstated: Khronos glTF test model",
+      "credit": "Khronos glTF-Sample-Models; JT to COLLADA conversion by Okino Computer Graphics",
+      "about": "An off-road buggy with a tube frame, suspension, wheels and seat: hundreds of parts."
+    },
+    {
+      "id": "saw",
+      "name": "Reciprocating saw",
+      "aliases": ["saw", "reciprocating saw", "power tool", "tool"],
+      "src": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/ReciprocatingSaw/glTF-Binary/ReciprocatingSaw.glb",
+      "license": "unstated: Khronos glTF test model",
+      "credit": "Khronos glTF-Sample-Models; JT to COLLADA conversion by Okino Computer Graphics",
+      "about": "A handheld reciprocating saw: motor housing, gearing, blade clamp and grip."
+    },
+    {
+      "id": "helmet",
+      "name": "Battle-damaged helmet",
+      "aliases": ["helmet", "sci-fi helmet", "damaged helmet", "armor", "mask"],
+      "src": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb",
+      "license": "CC-BY-NC-4.0 (model) + CC-BY-4.0 (conversion): personal, non-commercial use",
+      "credit": "Battle Damaged Sci-fi Helmet by theblueturtle_; glTF conversion by ctxwing"
+    },
+    {
+      "id": "camera",
+      "name": "Antique camera",
+      "aliases": ["camera", "old camera", "antique camera", "bellows camera"],
+      "src": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/AntiqueCamera/glTF-Binary/AntiqueCamera.glb",
+      "license": "CC0-1.0",
+      "credit": "Maximillan Kamps, UX3D"
+    },
+    {
+      "id": "boombox",
+      "name": "Boombox",
+      "aliases": ["boombox", "radio", "speaker", "stereo"],
+      "src": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/BoomBox/glTF-Binary/BoomBox.glb",
+      "license": "CC0-1.0",
+      "credit": "Microsoft"
+    },
+    {
+      "id": "toycar",
+      "name": "Toy car",
+      "aliases": ["toy car", "toy", "race car"],
+      "src": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/ToyCar/glTF-Binary/ToyCar.glb",
+      "license": "CC0-1.0",
+      "credit": "Guido Odendahl, Eric Chadwick"
+    },
+    {
+      "id": "lantern",
+      "name": "Lantern",
+      "aliases": ["lantern", "lamp", "light"],
+      "src": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Lantern/glTF-Binary/Lantern.glb",
+      "license": "CC0-1.0",
+      "credit": "sbtron (Microsoft), Frank Galligan"
+    },
+    {
+      "id": "bottle",
+      "name": "Water bottle",
+      "aliases": ["water bottle", "bottle", "flask"],
+      "src": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/WaterBottle/glTF-Binary/WaterBottle.glb",
+      "license": "CC0-1.0",
+      "credit": "Microsoft"
+    }
+  ]
+}

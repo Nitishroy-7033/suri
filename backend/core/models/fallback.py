@@ -43,6 +43,16 @@ class FallbackModel:
         self._down_until: dict[int, float] = {}
         self.active: ChatModel = models[0]  # the one that answered last
 
+    def replace(self, models: list[ChatModel]) -> None:
+        """New candidates, same object: whoever holds this chain (a session's
+        pipeline, the web agent) uses them from its next call. A call already
+        running keeps the list it started with."""
+        if not models:
+            raise ValueError("FallbackModel needs at least one model")
+        self.models = models
+        self._down_until = {}
+        self.active = models[0]
+
     # ChatModel-like surface, so callers need not know about the chain.
     @property
     def name(self) -> str:
@@ -72,10 +82,11 @@ class FallbackModel:
         # Everything marked down: try anyway rather than refuse outright.
         return up or usable
 
-    def _mark_down(self, i: int, exc: ModelError) -> None:
+    def _mark_down(self, i: int, m: ChatModel, exc: ModelError) -> None:
+        if i >= len(self.models) or self.models[i] is not m:
+            return  # the chain was replaced while this call ran
         secs = DOWN_DAILY_S if exc.daily_quota else DOWN_S
         self._down_until[i] = time.monotonic() + secs
-        m = self.models[i]
         log.warning("%s: %s unavailable (%s); skipping it for %d min",
                     self.agent or "model", m.describe(), exc.status or "timeout", secs // 60)
 
@@ -105,7 +116,7 @@ class FallbackModel:
                 last = exc
                 if started or not exc.retryable or n == len(candidates) - 1:
                     raise
-                self._mark_down(i, exc)
+                self._mark_down(i, model, exc)
         if last is not None:
             raise last
 
@@ -138,6 +149,6 @@ class FallbackModel:
                     if exc.status == 429 and delay >= RETRY_DELAYS[1]:
                         break
             if n < len(candidates) - 1 and last is not None:
-                self._mark_down(i, last)
+                self._mark_down(i, model, last)
         assert last is not None
         raise last

@@ -152,6 +152,51 @@ Windows gives no CPU temperature without admin tools, so it shows "n/a". GPU
 load and VRAM come from NVML on NVIDIA and from Windows' GPU performance
 counters otherwise (no GPU temperature then).
 
+### The holographic workshop
+
+Press **H** (or the cube in the top bar, or say "Jarvis, open the
+workshop") for a full-screen hologram lab. "Show the engine" puts a model on
+the projector -- glowing outlines, a fresnel rim, scan lines, bloom -- and
+"explode it", "highlight the piston", "spin it" work by voice, the mouse, or
+your hands. The chat, Jarvis settings and Systems views become floating
+windows; so do folders from any drive, file previews, and a PC panel
+(volume, brightness, media keys, live gauges).
+
+- **Hands** (the hand button): MediaPipe's GestureRecognizer in the browser,
+  camera on only while it's on, nothing sent anywhere. Pinch and drag turns
+  the model or moves a window; two hands pinch to scale and roll (or resize a
+  window); a fist moves the model; point and hold still to select; swipe for
+  the next model; an open palm lets go; a thumbs up held for half a second
+  confirms a dialog. Gestures are virtual pointers (`holo/pointer.js`), so
+  every button, slider and drag works by hand exactly as by mouse.
+- **Files** (`FS_ENABLED=true`): every drive, except what an assistant should
+  never read -- Windows, Program Files, AppData, `.ssh`, key and `.env`
+  files, Jarvis's own `data/`, hidden files (`domain/fs/access.py`; paths are
+  resolved through `..`, links and junctions first). Drop a file on the orb to
+  ask about it. Drop it on the trash and it goes to the Recycle Bin -- only
+  after *your* yes (a click, a thumbs up, or your own spoken words; the model
+  cannot confirm for you).
+- **Models**: ten free Khronos samples to start; drop a GLB/STL/OBJ to load
+  (and save) your own. With keys set, `forge_find` searches free models (Poly
+  Pizza) and `forge_build` generates new ones (Tripo, Meshy -- paid, and it
+  always asks first -- or your own TRELLIS/Hunyuan3D server), even from the
+  camera: "make a 3D model of this".
+
+The server only answers its own page: requests must name this host, the
+WebSocket refuses other origins, and file / PC / model routes need the
+per-start token from the `ready` message (`core/security.py`). That matters
+because the web agent's Chrome runs on the same machine.
+
+**Learning it:** the first time the workshop opens, the **Guide** window
+shows every gesture (with a moving picture), what you can say, and all the
+keyboard and mouse shortcuts -- press **?** or say "Jarvis, show me the
+guide" to bring it back. Its **Start the hand tutorial** button (or "start
+the hand tutorial") walks through each gesture with your camera and moves on
+by itself when it sees you do it. Workshop keys: `?` guide, `G` hands, `L`
+models, `F` files, `C` chat, `S` systems, `P` PC, `E` explode, `Space` spin,
+`R` reset, `←/→` previous/next model, `+/-` zoom, `A` arrange, `X` close the
+front window (plus `H`, `M`, `T`, `Esc`, `/`, `,` from the main page).
+
 ### Adding a capability
 
 Create `backend/domain/<name>/` with a `tools.py`:
@@ -262,6 +307,15 @@ the published RTF figures.
 .venv\Scripts\python.exe tests\test_agent.py      # tools, memory, motion, tool loop
 .venv\Scripts\python.exe tests\test_models.py     # model profiles, providers, fallbacks
 .venv\Scripts\python.exe tests\test_diagnostics.py # alert rules, sampler, status reports
+.venv\Scripts\python.exe tests\test_security.py  # Host / Origin / token checks
+.venv\Scripts\python.exe tests\test_holo.py      # workshop tools, model library, state
+.venv\Scripts\python.exe tests\test_fs.py        # file access rules, listing, reading
+.venv\Scripts\python.exe tests\test_trash.py     # Recycle Bin only on the user's yes
+.venv\Scripts\python.exe tests\test_pc.py        # volume / brightness (faked)
+.venv\Scripts\python.exe tests\test_forge.py     # model search and generation (faked)
+.venv\Scripts\python.exe tests\test_forge_providers.py # Poly Pizza / Tripo / Meshy / local adapters (fake HTTP)
+node tests\holo_gestures.test.mjs                 # hand-gesture rules on synthetic hands
+node tests\holo_tutorial.test.mjs                 # tutorial steps, shortcut table, gesture pictures
 .venv\Scripts\python.exe tests\probe_tools.py     # live: both brains call real tools
 .venv\Scripts\python.exe tests\probe_phase0.py    # live: audio plumbing
 .venv\Scripts\python.exe tests\probe_phase2.py    # live: a full spoken turn

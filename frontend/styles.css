@@ -588,6 +588,12 @@ kbd { font: 12px ui-monospace, Consolas, monospace; padding: 2px 7px; border-rad
   .checks li span { grid-column: 2; }
 }
 
+/* The hologram workshop wants a laptop screen and camera; on a phone it is
+   still one "Jarvis, open the workshop" away, but its button would crowd the bar. */
+@media (max-width: 600px) {
+  #workshop-btn { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

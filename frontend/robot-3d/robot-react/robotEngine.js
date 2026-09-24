@@ -423,9 +423,9 @@ export function createRobot(container, options = {}) {
     if (S.mood === 'listening') earGlow.emissiveIntensity *= 1 + ext.level * 1.5;
     controls.update();
     renderer.render(scene, camera);
-    if (!disposed) raf = requestAnimationFrame(frame);
+    if (!disposed && !paused) raf = requestAnimationFrame(frame);
   }
-  let disposed = false, raf = requestAnimationFrame(frame);
+  let disposed = false, paused = false, raf = requestAnimationFrame(frame);
 
 
 
@@ -494,6 +494,13 @@ export function createRobot(container, options = {}) {
     setLevel(l) { ext.level = Math.max(0, Math.min(1, l || 0)); },
     setArmPose(pose) { const p = typeof pose === 'string' ? ARM_POSES[pose] : pose; if (p) { S.armMode = 'manual'; S.armPose = p.slice(); } },
     get state() { return { ...S }; },
+    /** Stop rendering while hidden (e.g. behind the workshop) and resume later. */
+    setPaused(on) {
+      if (disposed || paused === !!on) return;
+      paused = !!on;
+      if (paused) cancelAnimationFrame(raf);
+      else { last = performance.now(); raf = requestAnimationFrame(frame); }
+    },
     object: g, scene, camera, renderer,
     dispose() {
       disposed = true; cancelAnimationFrame(raf); ro.disconnect(); clearTimeout(flashTimer);

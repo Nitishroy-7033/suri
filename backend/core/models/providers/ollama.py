@@ -134,3 +134,80 @@ async def ollama_unload(http: httpx.AsyncClient, host: str, model: str) -> None:
     r = await http.post(f"{host.rstrip('/')}/api/generate",
                         json={"model": model, "keep_alive": 0}, timeout=10)
     r.raise_for_status()
+
+
+# -- model library (used by the Setup page) --------------------------------------
+
+async def ollama_version(http: httpx.AsyncClient, host: str) -> str | None:
+    """The server's version, or None when Ollama is not running there."""
+    try:
+        r = await http.get(f"{host.rstrip('/')}/api/version", timeout=1.5)
+        r.raise_for_status()
+        return r.json().get("version") or "?"
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
+async def ollama_tags(http: httpx.AsyncClient, host: str) -> list[dict]:
+    """Every installed model, with what it can do (tools, vision, thinking)."""
+    r = await http.get(f"{host.rstrip('/')}/api/tags", timeout=5)
+    r.raise_for_status()
+    out = []
+    for m in r.json().get("models") or []:
+        d = m.get("details") or {}
+        out.append({"name": m.get("name") or m.get("model"),
+                    "size_mb": round((m.get("size") or 0) / 2**20),
+                    "modified_at": m.get("modified_at"),
+                    "family": d.get("family"),
+                    "params": d.get("parameter_size"),
+                    "quant": d.get("quantization_level"),
+                    "context": d.get("context_length"),
+                    # Newer Ollama only; None means "unknown", not "none".
+                    "capabilities": m.get("capabilities")})
+    return out
+
+
+async def ollama_delete(http: httpx.AsyncClient, host: str, model: str) -> None:
+    r = await http.request("DELETE", f"{host.rstrip('/')}/api/delete",
+                           json={"model": model}, timeout=30)
+    if r.status_code >= 400:
+        raise ModelError("ollama", r.status_code, r.text[:300])
+
+
+async def ollama_load(http: httpx.AsyncClient, host: str, model: str,
+                      num_thread: int, keep_alive: str = "10m") -> None:
+    """Load a model into memory now, so the next call skips its cold start
+    (15-20 s measured for a 5B model on this CPU).
+
+    `num_thread` must match what OllamaModel sends: it is a runner option,
+    and Ollama reloads the model when it differs -- measured, the next chat
+    call paid a second 18 s load."""
+    r = await http.post(f"{host.rstrip('/')}/api/generate",
+                        json={"model": model, "keep_alive": keep_alive,
+                              "options": {"num_thread": num_thread}}, timeout=180)
+    if r.status_code >= 400:
+        raise ModelError("ollama", r.status_code, r.text[:300])
+
+
+async def ollama_pull(http: httpx.AsyncClient, host: str, model: str) -> AsyncIterator[dict]:
+    """Download a model, yielding Ollama's progress lines as they come:
+    {"status": "pulling <digest>", "digest", "total", "completed"}, ...,
+    {"status": "success"}. Cancelling the iteration cancels the download."""
+    # No read timeout worth the name: verifying a multi-GB layer can take
+    # a minute with nothing sent.
+    timeout = httpx.Timeout(15, read=600)
+    async with http.stream("POST", f"{host.rstrip('/')}/api/pull",
+                           json={"model": model, "stream": True}, timeout=timeout) as resp:
+        if resp.status_code >= 400:
+            body = (await resp.aread()).decode("utf-8", "replace")[:300]
+            raise ModelError("ollama", resp.status_code, body)
+        async for line in resp.aiter_lines():
+            if not line.strip():
+                continue
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if msg.get("error"):
+                raise ModelError("ollama", 400, msg["error"])
+            yield msg

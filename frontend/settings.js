@@ -15,6 +15,9 @@ const DEFAULTS = {
   chirp: true, deviceId: "",
   talkStyle: "lively", armMode: "auto", armPose: "bothUp",
   tunables: {},  // only the ones you moved; the rest follow .env
+  // The holographic workshop (holo/)
+  holoColor: "#38d6ff", bloom: 0.9, glass: true, curve: true,
+  showCam: true, showSkeleton: true, smoothing: 0.5,
 };
 const LABELS = {
   boot: "Boot up", hi: "Hi!", bothUp: "Both up", pointUp: "Point up", reachOut: "Reach out", tPose: "T-pose",
@@ -42,7 +45,7 @@ const TUNABLES = [
     hint: "Speaking over a reply stops it" },
 ];
 
-export function initSettings({ bot, director, send, onDeviceChange, openMicTest }) {
+export function initSettings({ bot, director, send, onDeviceChange, openMicTest, onChange }) {
   const root = document.documentElement;
   const $ = (id) => document.getElementById(id);
   const drawer = $("settings"), scrim = $("scrim");
@@ -93,6 +96,7 @@ export function initSettings({ bot, director, send, onDeviceChange, openMicTest 
     Object.assign(prefs, patch);
     save();
     apply();
+    onChange?.(prefs, patch);
   }
 
   // ---------- layout ----------

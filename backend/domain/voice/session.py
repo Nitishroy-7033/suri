@@ -25,6 +25,7 @@ import numpy as np
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
+from ...core import security
 from ...core.runtime import AgentRuntime
 from ..brain.base import Brain
 from ..brain.factory import build_brain
@@ -93,6 +94,11 @@ class Session:
         # follow-up window
         self._followup_voice_ms = 0.0
         self._followup_deadline = 0.0
+
+        # what you said this turn, for a pending Recycle Bin yes (fs/trash.py)
+        self._heard_turn = None
+        self._heard_text = ""
+        self._heard_since = 0.0
 
         # brain
         self.brain: Brain | None = None
@@ -179,6 +185,12 @@ class Session:
         try:
             while True:
                 event = await q.get()
+                # Workshop commands belong to the tab you are talking to:
+                # with two tabs open, only one should open a folder.
+                active = self.agent.active_session
+                if (event.kind.startswith(("holo_", "fs_")) and active is not None
+                        and active is not self):
+                    continue
                 await self.send(event.to_wire())
                 if not ((event.say or event.text) and self.brain is not None):
                     continue
@@ -247,6 +259,8 @@ class Session:
         not know about models. This is the one place they meet.
         """
         kind = msg.get("t")
+        if kind == "transcript" and msg.get("role") == "user":
+            self._check_spoken_confirm(msg.get("turn_id"), str(msg.get("text") or ""))
         if kind == "tool_call":
             # A web search is legitimate thinking, not a hung reply: restart
             # the THINKING clock so the safety timeout does not kill it.
@@ -279,6 +293,28 @@ class Session:
                 await self._enter_follow_up()
             return  # internal signal; the client does not need it
         await self.send(msg)
+
+    def _check_spoken_confirm(self, turn_id, piece: str) -> None:
+        """A Recycle Bin request waiting for a yes: your own words decide it.
+
+        Pieces of one turn arrive separately, so they are joined first. Only
+        a request made before this turn started counts -- a yes to something
+        else a moment earlier must not carry over."""
+        trash = getattr(self.agent, "_trash", None) if self.agent else None
+        if trash is None:
+            return
+        if turn_id != self._heard_turn:
+            self._heard_turn, self._heard_text, self._heard_since = turn_id, "", time.time()
+        self._heard_text += piece
+        req = trash.latest()
+        if req is None or req.created > self._heard_since:
+            return
+        from ..fs.trash import said_no, said_yes
+
+        if said_yes(self._heard_text):
+            trash.confirm(req.id, "transcript")
+        elif said_no(self._heard_text):
+            trash.cancel(req.id)
 
     def _begin_drain(self, turn_id, total_samples: int) -> None:
         """Wait for the browser to finish playing before moving on."""
@@ -347,6 +383,9 @@ class Session:
                 "frameSamples": self.settings.wire_frame_samples,
                 "prebufferMs": self.settings.tts_prebuffer_ms,
                 "settings": self.tunables.as_dict(),
+                # For the file and model routes (core/security.py). Only a
+                # same-origin page gets this far, so only it learns the token.
+                "token": security.TOKEN,
             }
         )
         await self.fsm.to(State.IDLE, "connected")
@@ -864,6 +903,18 @@ class Session:
                                  "error": "diagnostics disabled (DIAG_ENABLED=false)"})
                 return
             self._set_diag_feed(bool(msg.get("on")))
+        elif kind == "holo_confirm":
+            # The confirm panel's Yes / No (a click, Enter, or a thumbs up).
+            trash = getattr(self.agent, "_trash", None) if self.agent else None
+            if trash is not None and msg.get("id"):
+                if msg.get("ok"):
+                    trash.confirm(str(msg["id"]), "ui")
+                else:
+                    trash.cancel(str(msg["id"]))
+        elif kind == "holo_state":
+            # What the workshop shows: model, parts, pointing, panels.
+            if self.agent is not None and isinstance(msg.get("state"), dict):
+                self.agent.holo.update(msg["state"])
         elif kind == "stop_audio":
             self._cancel_drain()
             await self.cancel_turn("user_stop")

@@ -7,6 +7,8 @@ import { initSettings } from "./settings.js";
 import { MicTest } from "./mictest.js";
 import { createChat } from "./chat.js";
 import { createDiag } from "./diag.js";
+import { initSetup } from "./setup.js";
+import { setToken } from "./api.js";
 
 // Companion layout: the robot and its state in one pane, the conversation in
 // the other. Voice states become moods, server events become gestures and
@@ -62,6 +64,7 @@ const settings = initSettings({
   bot, director, send,
   onDeviceChange: restartMic,
   openMicTest: () => micTest.open(),
+  onChange: () => workshop?.applyPrefs(),
 });
 const micTest = new MicTest($("mictest"), {
   deviceId: () => settings.prefs.deviceId || null,
@@ -86,6 +89,7 @@ function setState(name) {
   const [word, hint] = LABELS[shown] ?? [shown, ""];
   ui.status.textContent = idleTalk ? "Listening…" : word;
   ui.miniStatus.textContent = ui.status.textContent;
+  workshop?.setState(shown, ui.status.textContent);
   ui.hint.textContent = idleTalk ? "Just speak — no wake word needed"
     : shown === "IDLE" && !micOn ? "Mic is off — type a message, or press the mic"
     : hint;
@@ -127,6 +131,9 @@ diag.setVisible(document.documentElement.dataset.view === "systems");
 new MutationObserver(() => diag.setVisible(document.documentElement.dataset.view === "systems"))
   .observe(document.documentElement, { attributes: true, attributeFilter: ["data-view"] });
 $("diag-report").onclick = () => ask("Status report");
+
+// The Setup page (setup.js): every agent's model, API keys, Ollama, .env.
+initSetup({ beforeOpen: () => settings.close() });
 
 // ---------- sounds ----------
 
@@ -198,6 +205,7 @@ function connect() {
     sendHello();
     if (talkOn) send({ t: "converse", on: true });
     diag.resubscribe();
+    workshop?.resync();
   };
   ws.onclose = () => {
     setConn(false, "offline · retrying");
@@ -236,6 +244,7 @@ function sendHello() {
 function onControl(msg) {
   switch (msg.t) {
     case "ready":
+      setToken(msg.token);
       settings.onReady(msg.settings);
       setState(micOn ? "IDLE" : "OFFLINE");
       break;
@@ -288,6 +297,7 @@ function onControl(msg) {
     case "event":
       director.poke();
       if (msg.kind?.startsWith("web_")) { webEvent(msg); break; }
+      if (/^(holo|fs|forge)_/.test(msg.kind ?? "")) { withWorkshop((w) => w.event(msg)); break; }
       chat.event(msg);
       if (msg.kind === "diag_alert") { diag.alert(msg); bot.flash(msg.data?.level === "info" ? "happy" : "alert", 2400); }
       if (msg.kind === "timer") director.play("wave");
@@ -295,6 +305,7 @@ function onControl(msg) {
       break;
     case "diag":
       diag.update(msg.snap, msg.error);
+      workshop?.diagSnap(msg.snap);
       break;
     case "follow_up":
       director.endReply();
@@ -341,6 +352,38 @@ function onControl(msg) {
       break;
   }
 }
+
+// ---------- workshop ----------
+
+// The holographic workshop (holo/). Loaded the first time it is opened --
+// Three.js addons, MediaPipe and the hologram CSS cost nothing until then.
+let workshop = null, workshopLoad = null;
+function loadWorkshop() {
+  workshopLoad ??= (async () => {
+    const m = await import("./holo/workshop.js");
+    await m.ensureStyles();
+    workshop = m.createWorkshop({
+      root: $("workshop"), send, bot, diag, ask, toggleMic,
+      prefs: () => settings.prefs,
+      closeSettings: () => settings.close(),
+      // The orb pulses with Jarvis's voice, or yours while listening.
+      bands: (n) => (player?.playing ? player : micOn && !micMuted ? mic : null)?.bands(n) ?? null,
+    });
+    workshop.setState(document.body.dataset.state, ui.status.textContent);
+    window.workshop = workshop;  // handy from the console, like window.bot
+    return workshop;
+  })();
+  workshopLoad.catch(() => { workshopLoad = null; });
+  return workshopLoad;
+}
+function withWorkshop(fn) {
+  loadWorkshop().then(fn).catch((err) => {
+    console.error(err);
+    errorCard(`The workshop couldn't start: ${err.message}`);
+  });
+}
+const toggleWorkshop = () => withWorkshop((w) => w.toggle());
+$("workshop-btn").onclick = toggleWorkshop;
 
 // ---------- web agent ----------
 
@@ -544,7 +587,8 @@ function initInput() {
     if (k === "m") toggleMic();
     else if (k === "t") toggleTalk();
     else if (k === "v") settings.cycleView();
-    else if (k === ",") settings.toggle();
+    else if (k === ",") { if (workshop?.isOpen) workshop.openPanel("settings"); else settings.toggle(); }
+    else if (k === "h") toggleWorkshop();
     else if (k === "/") { e.preventDefault(); ui.input.focus(); }
   });
 }

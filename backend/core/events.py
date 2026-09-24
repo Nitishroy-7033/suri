@@ -45,7 +45,8 @@ class EventBus:
         self._subs.discard(q)
 
     def publish(self, event: Event) -> None:
-        log.info("event %s: %s", event.kind, event.say or event.data)
+        # Truncated: some events carry a screenshot (web_frame).
+        log.info("event %s: %s", event.kind, str(event.say or event.data)[:200])
         for q in self._subs:
             try:
                 q.put_nowait(event)

@@ -20,6 +20,10 @@ const TOOLS = {
   start_motion_watch: { icon: "video",  run: "Starting motion watch",     done: "Watching for motion" },
   stop_motion_watch:  { icon: "video",  run: "Stopping motion watch",     done: "Stopped watching" },
   camera_status:      { icon: "camera", run: "Checking the camera",       done: "Checked the camera" },
+  web_task:           { icon: "globe",  run: "Asking the web agent",      done: "Handed to the web agent", args: (a) => [a.task && `“${a.task}”`] },
+  web_reply:          { icon: "globe",  run: "Answering the web agent",   done: "Answered the web agent",  args: (a) => [a.answer && `“${a.answer}”`] },
+  web_status:         { icon: "globe",  run: "Checking the web agent",    done: "Checked the web agent" },
+  web_stop:           { icon: "globe",  run: "Stopping the web agent",    done: "Stopped the web agent" },
 };
 const toolInfo = (name) => TOOLS[name] ?? {
   icon: "tool", run: `Running ${name.replaceAll("_", " ")}`, done: name.replaceAll("_", " "),
@@ -88,7 +92,7 @@ function renderRich(text) {
   return html.replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[i]);
 }
 
-export function createChat({ convo, empty, onAsk }) {
+export function createChat({ convo, empty, onAsk, onWeb }) {
   let live = null;            // the assistant message being streamed
   let userMsg = null, userTurn = null;
   let typing = null;
@@ -338,6 +342,124 @@ export function createChat({ convo, empty, onAsk }) {
     }, 6000);
   }
 
+  // ---------- web agent ----------
+
+  // One card per web task, updated in place as the agent works: its steps,
+  // the latest look at the page, and Yes / No when it needs your say-so.
+  const webCards = new Map();
+  const STATE_TEXT = { working: "working…", waiting: "needs you", done: "done", stopped: "stopped", failed: "failed" };
+
+  function webCard(d) {
+    let card = webCards.get(d.task);
+    if (card) return card;
+    stopTyping();
+    live = null;
+    card = document.createElement("div");
+    card.className = "webcard";
+    card.innerHTML =
+      `<div class="wc-head">` +
+        `<span class="tool-icon">${icon("globe")}</span>` +
+        `<span class="wc-title"><b>Web agent</b><small></small></span>` +
+        `<span class="wc-state"><span class="spin"></span><span></span></span>` +
+        `<button class="mini-btn" type="button" data-stop>Stop</button>` +
+      `</div>` +
+      `<button class="wc-frame" type="button" hidden title="Click to enlarge"><img alt="What the web agent sees"><span></span></button>` +
+      `<ol class="wc-steps"></ol>` +
+      `<div class="wc-ask" hidden><p></p><div class="wc-ask-btns">` +
+        `<button class="mini-btn yes" type="button" data-answer="yes" data-for="confirm">Yes</button>` +
+        `<button class="mini-btn" type="button" data-answer="no" data-for="confirm">No</button>` +
+        `<button class="mini-btn yes" type="button" data-answer="done" data-for="handover">Done</button></div>` +
+        `<small>…or just say it</small></div>` +
+      `<p class="wc-summary" hidden></p>`;
+    card.querySelector(".wc-title small").textContent = d.goal || "";
+    card.querySelector("[data-stop]").onclick = () => onWeb?.({ t: "web_stop" });
+    card.querySelector(".wc-frame").onclick = (e) => e.currentTarget.classList.toggle("big");
+    for (const b of card.querySelectorAll("[data-answer]")) {
+      b.onclick = () => {
+        onWeb?.({ t: "web_reply", answer: b.dataset.answer });
+        card.querySelector(".wc-ask").hidden = true;
+      };
+    }
+    webCards.set(d.task, card);
+    put(card);
+    return card;
+  }
+
+  function webState(card, state) {
+    card.dataset.state = state;
+    const box = card.querySelector(".wc-state");
+    const busy = state === "working";
+    box.innerHTML = busy ? `<span class="spin"></span><span></span>`
+      : state === "done" ? `${icon("check", "ic xs")}<span></span>`
+      : state === "waiting" ? `${icon("alert", "ic xs")}<span></span>`
+      : `${icon("x", "ic xs")}<span></span>`;
+    box.querySelector("span:last-child").textContent = STATE_TEXT[state] ?? state;
+    card.querySelector("[data-stop]").hidden = !(busy || state === "waiting");
+  }
+
+  function webStep(card, text, note = false) {
+    const list = card.querySelector(".wc-steps");
+    const li = document.createElement("li");
+    li.textContent = text;
+    if (note) li.className = "note";
+    list.append(li);
+    // Keep it short: the last six steps, with a count of the rest.
+    const items = [...list.querySelectorAll("li:not(.more)")];
+    const hidden = items.length - 6;
+    items.forEach((el, i) => { el.hidden = i < hidden; });
+    let more = list.querySelector(".more");
+    if (hidden > 0) {
+      if (!more) { more = document.createElement("li"); more.className = "more"; list.prepend(more); }
+      more.textContent = `+${hidden} earlier step${hidden === 1 ? "" : "s"}`;
+    }
+  }
+
+  function web(msg) {
+    const d = msg.data || {};
+    if (d.task == null) return;
+    const card = webCard(d);
+    const stick = atBottom();
+    switch (msg.kind) {
+      case "web_start": webState(card, "working"); break;
+      case "web_step":
+        webStep(card, d.text + (d.kind !== "note" && d.result && /^(error|refused|no such)/i.test(d.result) ? ` — ${d.result}` : ""), d.kind === "note");
+        webState(card, d.state || "working");
+        break;
+      case "web_frame": {
+        const f = card.querySelector(".wc-frame");
+        f.hidden = false;
+        f.querySelector("img").src = `data:image/jpeg;base64,${d.jpeg}`;
+        f.querySelector("span").textContent = d.title ? `${d.title} · ${host(d.url || "")}` : host(d.url || "");
+        break;
+      }
+      case "web_question": {
+        const ask = card.querySelector(".wc-ask");
+        ask.hidden = false;
+        ask.querySelector("p").textContent = d.question;
+        // Yes/No for a confirmation; "Done" when you have to act in the
+        // browser window yourself (log in, solve a CAPTCHA, enter an OTP).
+        const handover = d.kind === "login" || d.kind === "action";
+        ask.querySelector(".wc-ask-btns").hidden = !(d.kind === "confirm" || handover);
+        for (const b of ask.querySelectorAll("[data-for]"))
+          b.hidden = b.dataset.for !== (handover ? "handover" : "confirm");
+        ask.querySelector("small").textContent = handover
+          ? "Do it in the Chrome window, then press Done or just say “done”"
+          : d.kind === "confirm" ? "…or just say yes or no" : "Say or type your answer";
+        webState(card, "waiting");
+        break;
+      }
+      case "web_done": {
+        card.querySelector(".wc-ask").hidden = true;
+        const sum = card.querySelector(".wc-summary");
+        sum.hidden = !d.summary;
+        sum.textContent = d.summary || "";
+        webState(card, d.state || "done");
+        break;
+      }
+    }
+    settle(stick);
+  }
+
   // ---------- public ----------
 
   return {
@@ -385,7 +507,7 @@ export function createChat({ convo, empty, onAsk }) {
       live = null;
     },
 
-    toolCall, toolResult,
+    toolCall, toolResult, web,
 
     event(msg) {
       stopTyping();
@@ -424,6 +546,7 @@ export function createChat({ convo, empty, onAsk }) {
       live = null;
       userMsg = null;
       jump.hidden = true;
+      webCards.clear();
     },
   };
 }

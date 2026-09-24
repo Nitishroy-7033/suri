@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fixture Kart</title>
+  <style>
+    body { font: 16px system-ui; margin: 32px; }
+    .card { border: 1px solid #ccc; padding: 10px; margin: 8px 0; max-width: 420px; }
+    .btn { display: inline-block; padding: 8px 14px; background: #ff9f00; color: #fff; }
+    #login { position: fixed; inset: 0; background: rgb(0 0 0 / .5); z-index: 50; }
+    #login > div { background: #fff; width: 360px; margin: 120px auto; padding: 20px; }
+  </style>
+</head>
+<body>
+  <!-- A Flipkart-like fixture for tests/probe_webagent.py:
+       - results render 1.2 s after searching (the agent must wait for them)
+       - product links open a new tab (the agent must stay in one)
+       - "Add to cart" is a bare <div> with a JS handler (no role, no cursor)
+       - adding needs a login, done by the user in a popup -->
+  <h1>Fixture Kart</h1>
+  <div id="home">
+    <form id="sf"><input name="q" placeholder="Search for products"><button>Search</button></form>
+  </div>
+  <div id="results"></div>
+  <div id="product" hidden>
+    <h2 id="pname"></h2>
+    <p id="pprice"></p>
+    <div id="add" class="btn">Add to cart</div>
+    <p id="cart">Cart: empty</p>
+  </div>
+  <div id="login" hidden><div>
+    <b>Login</b><p>Enter your phone number to continue</p>
+    <input id="phone" placeholder="Phone number" autocomplete="tel">
+    <button id="loginbtn" type="button">Continue</button>
+    <button id="closelogin" type="button">✕</button>
+  </div></div>
+
+  <script>
+    const PRODUCTS = [["boAt Rockerz 450", "₹1,499"], ["boAt Nirvana 751", "₹3,999"], ["Sony WH-CH520", "₹4,490"]];
+    const loggedIn = () => sessionStorage.getItem("user") === "1";
+    const show = (id, on) => { document.getElementById(id).hidden = !on; };
+
+    function route() {
+      const u = new URL(location.href);
+      const pid = u.searchParams.get("p");
+      const q = u.searchParams.get("q");
+      show("product", pid !== null);
+      document.getElementById("results").innerHTML = "";
+      if (pid !== null) {
+        const [name, price] = PRODUCTS[+pid];
+        document.title = `${name} | Fixture Kart`;
+        document.getElementById("pname").textContent = name;
+        document.getElementById("pprice").textContent = price;
+      } else if (q) {
+        document.title = `${q} - results | Fixture Kart`;
+        document.getElementById("results").textContent = "Loading…";
+        setTimeout(() => {  // results arrive late, like a real shop
+          document.getElementById("results").innerHTML = PRODUCTS
+            .map(([n, p], i) => `<div class="card"><a href="?p=${i}" target="_blank"><img alt="${n}" width="48" height="48"></a> ` +
+                                `<a href="?p=${i}" target="_blank">${p}</a></div>`).join("");
+        }, 1200);
+      }
+    }
+
+    document.getElementById("sf").addEventListener("submit", (e) => {
+      e.preventDefault();
+      history.pushState(null, "", `?q=${encodeURIComponent(new FormData(e.target).get("q"))}`);
+      route();
+    });
+    document.getElementById("add").addEventListener("click", () => {
+      if (!loggedIn()) { show("login", true); return; }
+      document.getElementById("cart").textContent = `Cart: 1 × ${document.getElementById("pname").textContent}`;
+    });
+    document.getElementById("closelogin").onclick = () => show("login", false);
+    document.getElementById("loginbtn").onclick = () => {
+      if (document.getElementById("phone").value) { sessionStorage.setItem("user", "1"); show("login", false); }
+    };
+    route();
+  </script>
+</body>
+</html>

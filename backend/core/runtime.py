@@ -37,6 +37,18 @@ TOOL_PROMPT = (
     "say what it means in a sentence."
 )
 
+WEB_AGENT_PROMPT = (
+    " For anything that needs a website -- opening a site, searching it, "
+    "clicking, filling a form, playing a video, reading what is on the page -- "
+    "delegate to the web agent with web_task, in the user's words. Pass "
+    "follow-ups about the page to web_task too. When it asks something, ask "
+    "the user and send their answer with web_reply. Only report what the web "
+    "agent actually says it did -- if it is still working, say so, never "
+    "guess the outcome. If a site needs the user to log in, tell them to do "
+    "it in the Chrome window and send 'done' with web_reply when they say "
+    "so. Say what it did in a sentence; never read out URLs."
+)
+
 
 class AgentRuntime:
     def __init__(self, settings: Settings) -> None:
@@ -47,6 +59,10 @@ class AgentRuntime:
         self.camera = None
         self.motion = None
         self._vision = None
+        self._web_agent = None
+        #: The session the user last spoke or typed to. With several tabs
+        #: open, the web agent's results are spoken only there.
+        self.active_session = None
         #: Background jobs owned by tools (timers). Kept so they are not
         #: garbage-collected mid-flight and can be cancelled on shutdown.
         self.jobs: set[asyncio.Task] = set()
@@ -79,6 +95,8 @@ class AgentRuntime:
                  "on" if self.camera else "off")
 
     async def close(self) -> None:
+        if self._web_agent is not None:
+            await self._web_agent.close()
         for job in list(self.jobs):
             job.cancel()
         if self.motion is not None:
@@ -102,6 +120,8 @@ class AgentRuntime:
         prompt += f" Today is {datetime.now():%A %d %B %Y}."
         if with_tools and self.settings.tools_enabled:
             prompt += TOOL_PROMPT
+            if self.settings.web_agent_enabled:
+                prompt += WEB_AGENT_PROMPT
         facts = self.memory.recent(self.settings.memory_prompt_facts)
         if facts:
             prompt += (" Things the user has asked you to remember: "
@@ -117,6 +137,15 @@ class AgentRuntime:
 
             self._vision = GeminiVision(self.settings)
         return self._vision
+
+    @property
+    def web_agent(self):
+        """The separate agent that drives Chrome for website jobs."""
+        if self._web_agent is None:
+            from ..domain.webagent.agent import WebAgent
+
+            self._web_agent = WebAgent(self)
+        return self._web_agent
 
     def spawn(self, coro) -> asyncio.Task:
         task = asyncio.create_task(coro)

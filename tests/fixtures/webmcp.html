@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fixture Shop (WebMCP)</title>
+  <style>body { font: 16px system-ui; margin: 32px; } .item { margin: 6px 0; }</style>
+</head>
+<body>
+  <h1>Fixture Shop</h1>
+  <p>A test page that publishes WebMCP tools, for tests/probe_webagent.py.</p>
+
+  <!-- Declarative tool: a plain form the browser turns into a tool. -->
+  <form id="search" toolname="search_products" tooldescription="Search the shop's products by keyword." toolautosubmit>
+    <label>Keyword <input name="q" toolparamdescription="What to search for, e.g. 'usb hub'" required></label>
+    <button type="submit">Search</button>
+  </form>
+
+  <h2>Results</h2>
+  <div id="results">Nothing searched yet.</div>
+  <h2>Cart</h2>
+  <div id="cart">Empty.</div>
+
+  <script>
+    const PRODUCTS = ["USB-C hub", "USB hub 4-port", "HDMI cable", "Laptop stand"];
+    const cart = [];
+
+    function search(q) {
+      const hits = PRODUCTS.filter((p) => p.toLowerCase().includes(String(q).toLowerCase()));
+      document.getElementById("results").innerHTML =
+        hits.map((h) => `<div class="item">${h}</div>`).join("") || "No products found.";
+      return hits;
+    }
+
+    document.getElementById("search").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const hits = search(new FormData(e.target).get("q"));
+      const text = hits.length ? `Found: ${hits.join(", ")}` : "No products found.";
+      if (e.respondWith) e.respondWith(Promise.resolve(text));
+    });
+
+    // Imperative tool, marked consequential: an agent must confirm first.
+    const mc = document.modelContext ?? navigator.modelContext;
+    if (mc?.registerTool) {
+      mc.registerTool({
+        name: "add_to_cart",
+        description: "Add a product to the cart by its exact name.",
+        inputSchema: {
+          type: "object",
+          properties: { product: { type: "string", description: "Exact product name" } },
+          required: ["product"],
+        },
+        annotations: { consequentialHint: true },
+        async execute({ product }) {
+          if (!PRODUCTS.includes(product)) return `No product called ${product}.`;
+          cart.push(product);
+          document.getElementById("cart").textContent = cart.join(", ");
+          return `Added ${product}. Cart has ${cart.length} item(s).`;
+        },
+      });
+      document.title += " · tools registered";
+    }
+  </script>
+</body>
+</html>

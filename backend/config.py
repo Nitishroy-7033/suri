@@ -209,6 +209,37 @@ class Settings(BaseSettings):
     motion_pixel_delta: float = 25.0
     motion_min_area: float = 0.02
 
+    # --- agent: web agent (domain/webagent) ---
+    # A separate agent that drives a real Chrome window: Jarvis delegates
+    # website jobs to it with web_task. Off by default -- it clicks and types
+    # on real sites, so it should only run when you chose it.
+    web_agent_enabled: bool = False
+    web_agent_model: str = "gemini-flash-latest"  # its own model, not the Live one
+    # Tried when the main one is overloaded ("503 high demand"). Empty = none.
+    web_agent_fallback_model: str = "gemini-flash-lite-latest"
+    # When both Gemini models are overloaded, a step goes to Groq (needs
+    # GROQ_API_KEY). Empty = the pipeline's GROQ_LLM_MODEL.
+    web_agent_groq_model: str = ""
+    web_agent_max_steps: int = 25
+    # web_task waits this long before answering "working on it": quick jobs
+    # ("what's the title of this page") come back in the same turn.
+    web_agent_sync_wait_s: float = 6.0
+    web_agent_answer_timeout_s: float = 180.0  # how long a question waits for you
+    # How long it waits while you log in / solve a CAPTCHA in the window.
+    web_agent_handover_timeout_s: float = 600.0
+    # Installed Chrome (149+ has WebMCP). "chromium" needs `playwright install`.
+    browser_channel: str = "chrome"
+    browser_profile_dir: str = "data/browser-profile"
+    browser_idle_close_s: float = 600.0
+    browser_nav_timeout_s: float = 25.0
+    # Links that would open a new tab open in the same one, so follow-ups
+    # ("add it to the cart") continue exactly where the agent left off.
+    browser_single_tab: bool = True
+    # Comma-separated domains the agent must never open, e.g. "bank.com,paypal.com".
+    browser_blocked_domains: str = ""
+    # Buy / pay / delete / send / post... always ask you first. Leave this on.
+    browser_confirm_risky: bool = True
+
     # --- resilience ---
     fallback_after_failures: int = 2
     fallback_cooldown_s: int = 120

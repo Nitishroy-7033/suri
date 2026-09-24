@@ -111,7 +111,11 @@ function caption(text, holdMs = 9000) {
 // ---------- conversation ----------
 
 // Messages, tool cards and timers live in chat.js.
-const chat = createChat({ convo: ui.convo, empty: ui.empty, onAsk: (t) => ask(t) });
+const chat = createChat({
+  convo: ui.convo, empty: ui.empty, onAsk: (t) => ask(t),
+  // The web task card's Yes / No / Stop buttons go straight to the server.
+  onWeb: (m) => { if (!send(m)) errorCard("Not connected to the server."); },
+});
 const errorCard = (text, retry = null) => chat.error(text, retry);
 
 // ---------- sounds ----------
@@ -271,8 +275,9 @@ function onControl(msg) {
       else { director.play("shake"); bot.flash("confused", 1600); }
       break;
     case "event":
-      chat.event(msg);
       director.poke();
+      if (msg.kind?.startsWith("web_")) { webEvent(msg); break; }
+      chat.event(msg);
       if (msg.kind === "timer") director.play("wave");
       else if (msg.kind === "motion") bot.flash("alert", 2000);
       break;
@@ -319,6 +324,35 @@ function onControl(msg) {
       else if (/quota|exhausted|429/i.test(msg.message ?? "")) errorCard("The AI's usage quota is used up — check the plan and billing for your API key, or switch the brain in .env.", lastTyped || null);
       else errorCard(msg.message || "Something went wrong.");
       break;
+  }
+}
+
+// ---------- web agent ----------
+
+// Progress from the separate web agent: the chat card shows it, and the
+// robot reacts to the moments that matter.
+const webChip = $("web-chip");
+webChip.onclick = () => send({ t: "web_stop" });
+
+function webEvent(msg) {
+  chat.web(msg);
+  const d = msg.data || {};
+  // Top-bar chip: which site, while a task runs (visible in every view).
+  // Only lifecycle events change it: a late screenshot must not bring it back.
+  if (msg.kind !== "web_frame") {
+    webChip.hidden = msg.kind === "web_done";
+    webChip.dataset.state = msg.kind === "web_question" ? "waiting" : "working";
+  }
+  if (d.url) {
+    try { webChip.querySelector("span").textContent = new URL(d.url).hostname.replace(/^www\./, ""); } catch {}
+  } else if (msg.kind === "web_start") {
+    webChip.querySelector("span").textContent = "web agent";
+  }
+  if (msg.kind === "web_start") director.play("scan");
+  else if (msg.kind === "web_question") { director.play("surprise"); bot.flash("listening", 2500); }
+  else if (msg.kind === "web_done") {
+    if (d.state === "done") director.play("nod");
+    else if (d.state === "failed") { director.play("shake"); bot.flash("confused", 1800); }
   }
 }
 

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fixture Checkout</title>
+  <style>body { font: 16px system-ui; margin: 32px; } label { display: block; margin: 10px 0; }</style>
+</head>
+<body>
+  <h1>Fixture Checkout</h1>
+  <p>A test form for tests/probe_webagent.py: a text field, a password, a dropdown and a risky button.</p>
+  <form id="f" onsubmit="event.preventDefault(); document.getElementById('out').textContent = 'ORDER PLACED';">
+    <label>Name <input name="name" placeholder="Your name"></label>
+    <label>Password <input type="password" name="password"></label>
+    <label>Country
+      <select name="country"><option>Choose…</option><option>India</option><option>Nepal</option></select>
+    </label>
+    <button type="submit">Place order</button>
+  </form>
+  <p><a href="#more" onclick="document.getElementById('out').textContent = 'LINK CLICKED'">Read more</a></p>
+  <p id="out">Nothing yet.</p>
+</body>
+</html>

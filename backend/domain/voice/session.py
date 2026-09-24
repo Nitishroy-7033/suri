@@ -145,23 +145,53 @@ class Session:
         Only IDLE, not FOLLOW_UP_WINDOW: in the window the user may be about
         to speak, and an alert barging in there is exactly the interruption
         the whole state machine exists to avoid. Anything that could not be
-        spoken is still on screen.
+        spoken right away is on screen, and is said once things go quiet.
         """
         q = self.agent.events.subscribe()
+        later: list = []  # things to say once the conversation goes quiet
+        waiter: asyncio.Task | None = None
+
+        async def announce(event) -> bool:
+            # State first, so the brain's tts_begin finds us out of IDLE.
+            await self.fsm.to(State.THINKING, f"event_{event.kind}")
+            if await self.brain.announce(event.say):
+                log.info("announcing %s", event.kind)
+                return True
+            await self.fsm.to(State.IDLE, "announce_declined")
+            return False
+
+        async def when_idle() -> None:
+            # Not dropped, just held: a timer or a finished web task is still
+            # worth saying once you stop talking, for a minute and a half.
+            deadline = time.monotonic() + 90
+            while later and time.monotonic() < deadline:
+                await asyncio.sleep(0.3)
+                if self.brain is not None and self.fsm.is_(State.IDLE):
+                    event = later.pop(0)
+                    if not await announce(event):
+                        later.insert(0, event)
+            later.clear()
+
         try:
             while True:
                 event = await q.get()
                 await self.send(event.to_wire())
-                if not (event.say and self.brain is not None
-                        and self.fsm.is_(State.IDLE)):
+                if not (event.say and self.brain is not None):
                     continue
-                # State first, so the brain's tts_begin finds us out of IDLE.
-                await self.fsm.to(State.THINKING, f"event_{event.kind}")
-                if await self.brain.announce(event.say):
-                    log.info("announcing %s", event.kind)
-                else:
-                    await self.fsm.to(State.IDLE, "announce_declined")
+                # With several tabs open, the web agent's results and
+                # questions belong to the one you were talking to.
+                active = self.agent.active_session
+                if event.kind.startswith("web_") and active is not None and active is not self:
+                    continue
+                if self.fsm.is_(State.IDLE) and not later:
+                    await announce(event)
+                    continue
+                later.append(event)
+                if waiter is None or waiter.done():
+                    waiter = asyncio.create_task(when_idle())
         finally:
+            if waiter is not None:
+                waiter.cancel()
             self.agent.events.unsubscribe(q)
 
     async def _brain_send(self, msg: dict) -> None:
@@ -516,6 +546,8 @@ class Session:
         self.capturing = True
         self._followup_voice_ms = 0.0
         self._heard_speech = False
+        if self.agent is not None:
+            self.agent.active_session = self
 
         await self.fsm.to(State.LISTENING, reason)
 
@@ -616,6 +648,18 @@ class Session:
         self.wake.reset()
         await self.fsm.to(State.FOLLOW_UP_WINDOW, "reply_finished")
         await self.send({"t": "follow_up", "ms": self.tunables.followup_ms})
+        # The mic-frame path closes the window, but with the mic off (typing)
+        # no frames arrive and it would stay open forever -- and nothing that
+        # waits for IDLE, like a timer or a finished web task, would be said.
+        asyncio.create_task(self._expire_follow_up(self._followup_deadline))
+
+    async def _expire_follow_up(self, deadline: float) -> None:
+        await asyncio.sleep(max(0.0, deadline - time.monotonic()) + 0.25)
+        # Only this window: a newer one has its own deadline and timer.
+        if self.fsm.is_(State.FOLLOW_UP_WINDOW) and self._followup_deadline == deadline:
+            if self.brain is not None:
+                await self.brain.end_turn()
+            await self.fsm.to(State.IDLE, "follow_up_timeout")
 
     # -- placeholder audio out (real TTS lands here in Phase 2) -----------
 
@@ -726,6 +770,7 @@ class Session:
                                   float(msg.get("seconds", 3.0)))
             )
         elif kind == "text":
+            self.agent.active_session = self
             text = str(msg.get("text") or "").strip()[:2000]
             if not text:
                 return
@@ -753,6 +798,17 @@ class Session:
                 await self.send({"t": "error", "code": "busy", "fatal": False,
                                  "message": "still finishing the last reply"})
                 await self.fsm.to(State.IDLE, "ask_declined")
+        elif kind in ("web_reply", "web_stop"):
+            # The web task card's Yes / No / Stop buttons.
+            if not self.settings.web_agent_enabled:
+                return
+            web = self.agent.web_agent
+            if kind == "web_stop":
+                await web.stop()
+            else:
+                answer = str(msg.get("answer") or "").strip()[:500]
+                if answer:
+                    asyncio.create_task(web.reply(answer))
         elif kind == "stop_audio":
             self._cancel_drain()
             await self.cancel_turn("user_stop")
@@ -775,6 +831,8 @@ class Session:
 
     async def close(self) -> None:
         self._closing = True
+        if self.agent is not None and self.agent.active_session is self:
+            self.agent.active_session = None
         if self._events_task is not None:
             self._events_task.cancel()
         if self.brain is not None:

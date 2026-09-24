@@ -20,6 +20,7 @@ from ...domain.memory import tools as memory
 from ...domain.system import tools as system
 from ...domain.vision import tools as vision
 from ...domain.web import tools as web
+from ...domain.webagent import tools as webagent
 from .base import ToolContext
 from .registry import ToolRegistry
 
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     from ...config import Settings
     from ..runtime import AgentRuntime
 
-DOMAIN_TOOL_MODULES = [system, web, memory, vision]
+DOMAIN_TOOL_MODULES = [system, web, memory, vision, webagent]
 
 
 def build_registry(settings: "Settings", runtime: "AgentRuntime",

@@ -71,6 +71,15 @@ class Brain(ABC):
         """
         return False
 
+    async def speak(self, text: str) -> bool:
+        """Say these exact words, unprompted.
+
+        For agents that already wrote the sentence with their own model (the
+        diagnostics agent's alerts): the voice only speaks it. Same rules as
+        announce -- only called while IDLE; False if busy or unable.
+        """
+        return False
+
     async def ask(self, text: str) -> bool:
         """Answer a typed message, spoken like any other reply.
 

@@ -11,14 +11,34 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from typing import Literal
 
+from pydantic import BaseModel, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BrainMode = Literal["auto", "gemini_live", "pipeline", "offline"]
 
+Provider = Literal["openai", "groq", "openrouter", "openai_compat",
+                   "gemini", "ollama", "anthropic"]
+
+
+class ModelProfile(BaseModel):
+    provider: Provider | None = None
+    model: str = ""
+    model_key: str = ""  # empty = GROQ_API_KEY / GEMINI_API_KEY / ... for the provider
+    base_url: str = ""  # empty = the provider's usual endpoint
+    temperature: float | None = None
+    max_tokens: int | None = None
+    timeout_s: float | None = None
+    #: Provider-specific request fields, merged into the request body
+    #: (OpenAI-style and Ollama), e.g. {"think": true} or {"reasoning_effort": "low"}.
+    extra: dict = {}
+    #: Tried in order when this one is rate-limited, overloaded or down.
+    fallback: list["ModelProfile"] = []
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=".env", env_file_encoding="utf-8", extra="ignore",
+        env_nested_delimiter="__",
     )
 
     # --- server ---
@@ -30,6 +50,22 @@ class Settings(BaseSettings):
     # --- keys (both free, both optional; offline mode needs neither) ---
     gemini_api_key: str = ""
     groq_api_key: str = ""
+    # Only needed if an agent below is switched to that provider.
+    openai_api_key: str = ""
+    anthropic_api_key: str = ""
+    openrouter_api_key: str = ""
+
+    # --- which model each agent uses (see ModelProfile) ---
+    # Unset = built from the older per-agent settings further down
+    # (GROQ_LLM_MODEL, WEB_AGENT_MODEL, VISION_MODEL...), so existing .env
+    # files keep working. Gemini Live is the realtime voice brain, not one
+    # of these; its model is GEMINI_LIVE_MODEL.
+    voice_llm: ModelProfile | None = None  # the pipeline brain's LLM
+    web_agent: ModelProfile | None = None
+    vision_agent: ModelProfile | None = None
+    # Small and local on purpose: it phrases status reports and alerts, and
+    # must keep working when the cloud quota is gone.
+    diagnostics_agent: ModelProfile | None = None
 
     # --- mode selection ---
     jarvis_mode: BrainMode = "auto"
@@ -240,9 +276,70 @@ class Settings(BaseSettings):
     # Buy / pay / delete / send / post... always ask you first. Leave this on.
     browser_confirm_risky: bool = True
 
+    # --- agent: diagnostics (domain/diagnostics) ---
+    diag_enabled: bool = True
+    diag_interval_s: float = 2.0
+    diag_alerts: bool = True  # speak up when a threshold is crossed
+    diag_alert_cooldown_s: float = 600.0  # per rule
+    diag_battery_low: float = 20.0
+    diag_battery_critical: float = 10.0
+    diag_temp_hot_c: float = 85.0
+    diag_ram_high_pct: float = 90.0
+    diag_disk_low_gb: float = 5.0
+    diag_ping_host: str = "1.1.1.1"
+
     # --- resilience ---
     fallback_after_failures: int = 2
     fallback_cooldown_s: int = 120
+
+    @model_validator(mode="after")
+    def _default_profiles(self) -> "Settings":
+        """Fill agent profiles from the older per-agent settings.
+
+        A partial profile from .env (only DIAGNOSTICS_AGENT__MODEL, say) is
+        laid over the default; one that names a different provider replaces
+        it outright."""
+        for agent, default in self._builtin_profiles().items():
+            cur = getattr(self, agent)
+            if cur is None:
+                setattr(self, agent, default)
+            elif cur.provider in (None, default.provider):
+                setattr(self, agent, default.model_copy(
+                    update={k: getattr(cur, k) for k in cur.model_fields_set}
+                    | {"provider": default.provider}))
+        return self
+
+    def _builtin_profiles(self) -> dict[str, ModelProfile]:
+        return {
+            "voice_llm": ModelProfile(
+                provider="groq", model=self.groq_llm_model,
+                fallback=[ModelProfile(provider="groq", model=m)
+                          for m in [self.groq_llm_fallback_model] if m]
+                + [ModelProfile(provider="ollama", model=self.ollama_model)]),
+            "web_agent": ModelProfile(
+                provider="gemini", model=self.web_agent_model,
+                fallback=[ModelProfile(provider="gemini", model=m)
+                          for m in [self.web_agent_fallback_model] if m]
+                + [ModelProfile(provider="groq", model=m)
+                   for m in dict.fromkeys([self.web_agent_groq_model or self.groq_llm_model,
+                                           self.groq_llm_fallback_model]) if m]),
+            "vision_agent": ModelProfile(provider="gemini", model=self.vision_model),
+            "diagnostics_agent": ModelProfile(provider="ollama", model="qwen2.5:1.5b",
+                                              temperature=0.4, max_tokens=120),
+        }
+
+    def agent_profile(self, agent: str) -> ModelProfile:
+        profile = getattr(self, agent, None)
+        if not isinstance(profile, ModelProfile):
+            raise KeyError(f"no model profile for agent {agent!r}")
+        return profile
+
+    def provider_key(self, provider: str) -> str:
+        return {
+            "openai": self.openai_api_key, "groq": self.groq_api_key,
+            "openrouter": self.openrouter_api_key, "gemini": self.gemini_api_key,
+            "anthropic": self.anthropic_api_key,
+        }.get(provider, "")
 
     @property
     def ring_samples(self) -> int:

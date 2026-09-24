@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ...domain.diagnostics import tools as diagnostics
 from ...domain.memory import tools as memory
 from ...domain.system import tools as system
 from ...domain.vision import tools as vision
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
     from ...config import Settings
     from ..runtime import AgentRuntime
 
-DOMAIN_TOOL_MODULES = [system, web, memory, vision, webagent]
+DOMAIN_TOOL_MODULES = [system, web, memory, vision, webagent, diagnostics]
 
 
 def build_registry(settings: "Settings", runtime: "AgentRuntime",

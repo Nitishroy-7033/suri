@@ -20,7 +20,7 @@ const LABELS = {
   boot: "Boot up", hi: "Hi!", bothUp: "Both up", pointUp: "Point up", reachOut: "Reach out", tPose: "T-pose",
 };
 const label = (k) => LABELS[k] ?? k[0].toUpperCase() + k.slice(1);
-const VIEWS = ["split", "robot", "chat"];
+const VIEWS = ["split", "robot", "chat", "systems"];
 const ACCENTS = [
   ["#1e88ff", "Blue"], ["#7c5cff", "Violet"], ["#0ea5a4", "Teal"],
   ["#16a34a", "Green"], ["#f97316", "Orange"], ["#ec4899", "Pink"],

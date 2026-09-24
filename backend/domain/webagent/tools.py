@@ -13,8 +13,9 @@ from .browser import playwright_missing
 def _unavailable(ctx: ToolContext) -> str | None:
     if not ctx.settings.web_agent_enabled:
         return "web agent disabled (WEB_AGENT_ENABLED=false)"
-    if not ctx.settings.gemini_api_key:
-        return "the web agent needs GEMINI_API_KEY"
+    why = ctx.runtime.models.available("web_agent")
+    if why:
+        return f"the web agent has no usable model ({why})"
     return playwright_missing()
 
 

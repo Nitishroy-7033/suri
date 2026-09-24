@@ -81,6 +81,7 @@
           <button role="radio" data-view="robot" title="Robot only (V)"><svg class="ic"><use href="#i-robot"/></svg><span>Robot</span></button>
           <button role="radio" data-view="split" title="Side by side (V)"><svg class="ic"><use href="#i-split"/></svg><span>Split</span></button>
           <button role="radio" data-view="chat" title="Chat only (V)"><svg class="ic"><use href="#i-chat"/></svg><span>Chat</span></button>
+          <button role="radio" data-view="systems" title="System diagnostics (V)"><svg class="ic"><use href="#i-gauge"/></svg><span>Systems</span></button>
         </div>
         <button id="swap-btn" class="tool" title="Swap sides" aria-label="Swap sides"><svg class="ic"><use href="#i-swap"/></svg></button>
         <button id="mictest-btn" class="tool" title="Test microphone" aria-label="Test microphone"><svg class="ic"><use href="#i-gauge"/></svg></button>
@@ -144,6 +145,17 @@
             <button id="send-btn" class="btn primary icon" type="submit" aria-label="Send" disabled><svg class="ic"><use href="#i-send"/></svg></button>
           </form>
         </section>
+
+        <!-- System diagnostics: the laptop and Jarvis itself (diag.js) -->
+        <section id="diag" class="diag-panel" aria-label="System diagnostics">
+          <header class="panel-bar">
+            <h1>Systems</h1>
+            <span id="diag-stamp" class="diag-stamp">waiting for data…</span>
+            <span class="grow"></span>
+            <button id="diag-report" class="link" type="button" title="Ask Jarvis for a spoken status report">Status report</button>
+          </header>
+          <div id="diag-body" class="diag-body"></div>
+        </section>
       </main>
     </div>
 
@@ -158,7 +170,7 @@
         <section class="group">
           <h3>Layout</h3>
           <label class="row"><span>View</span>
-            <select data-pref="view"><option value="split">Side by side</option><option value="robot">Robot only</option><option value="chat">Chat only</option></select>
+            <select data-pref="view"><option value="split">Side by side</option><option value="robot">Robot only</option><option value="chat">Chat only</option><option value="systems">Systems</option></select>
           </label>
           <label class="row"><span>Robot on the right</span><input type="checkbox" class="switch" data-pref="swap" /></label>
           <label class="row col"><span>Robot panel width <b data-out="split"></b></span>

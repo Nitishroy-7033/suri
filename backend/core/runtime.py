@@ -8,6 +8,7 @@ those shared things and hands each session a ToolRegistry bound to them.
     main.py lifespan  ->  AgentRuntime.start()
     each Session      ->  runtime.registry(brain_name)   (tools for its brain)
                           runtime.events.subscribe()     (proactive alerts)
+    every agent       ->  runtime.models.get("<agent>")  (its model, from config)
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ import httpx
 
 from ..config import Settings
 from .events import EventBus
+from .models import ModelHub
 from ..domain.memory.store import MemoryStore
 from .tools.catalog import build_registry
 from .tools.registry import ToolRegistry
@@ -33,8 +35,10 @@ TOOL_PROMPT = (
     " You can use tools. Use them whenever a question depends on live or "
     "personal information -- the current time, the news, the weather, "
     "anything on the web, what the camera sees, or what the user asked you "
-    "to remember -- instead of guessing. Never read out URLs or raw data; "
-    "say what it means in a sentence."
+    "to remember -- instead of guessing. For a status report or questions "
+    "about the laptop's battery, temperature, memory or speed, use "
+    "system_status and say its answer as it is. Never read out URLs or raw "
+    "data; say what it means in a sentence."
 )
 
 WEB_AGENT_PROMPT = (
@@ -55,6 +59,10 @@ class AgentRuntime:
         self.settings = settings
         self.events = EventBus()
         self.memory = MemoryStore(DATA_DIR / "memory.json")
+        #: Every agent's model, from its profile in config (VOICE_LLM__...).
+        self.models = ModelHub(settings)
+        #: The diagnostics agent; None when DIAG_ENABLED=false.
+        self.diag = None
         self.http: httpx.AsyncClient | None = None
         self.camera = None
         self.motion = None
@@ -91,12 +99,20 @@ class AgentRuntime:
                 )
                 if s.motion_watch_on_start:
                     self.motion.start()
-        log.info("agent ready: %d memories, camera %s", len(self.memory),
-                 "on" if self.camera else "off")
+        if self.settings.diag_enabled:
+            from ..domain.diagnostics.agent import DiagnosticsAgent
+
+            self.diag = DiagnosticsAgent(self)
+            await self.diag.start()
+        self.models.log_summary()
+        log.info("agent ready: %d memories, camera %s, diagnostics %s", len(self.memory),
+                 "on" if self.camera else "off", "on" if self.diag else "off")
 
     async def close(self) -> None:
         if self._web_agent is not None:
             await self._web_agent.close()
+        if self.diag is not None:
+            await self.diag.close()
         for job in list(self.jobs):
             job.cancel()
         if self.motion is not None:
@@ -105,6 +121,7 @@ class AgentRuntime:
             self.camera.close()
         if self.http is not None:
             await self.http.aclose()
+        await self.models.close()
 
     # -- per session -------------------------------------------------------
 
@@ -133,9 +150,9 @@ class AgentRuntime:
     @property
     def vision(self):
         if self._vision is None:
-            from ..domain.vision.describe import GeminiVision
+            from ..domain.vision.describe import Vision
 
-            self._vision = GeminiVision(self.settings)
+            self._vision = Vision(self.models.get("vision_agent"))
         return self._vision
 
     @property

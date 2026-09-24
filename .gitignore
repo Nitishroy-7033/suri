@@ -2,6 +2,6 @@
 __pycache__/
 *.pyc
 .env
-models/
+/models/
 debug/
 data/

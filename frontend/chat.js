@@ -518,6 +518,10 @@ export function createChat({ convo, empty, onAsk, onWeb }) {
         timerRang(msg.data);
         el.dataset.kind = "timer";
         el.innerHTML = `${icon("timer")}<span><b>Timer done</b>${msg.data?.label ? ` · ${esc(msg.data.label)}` : ""}</span><time>${hhmm()}</time>`;
+      } else if (msg.kind === "diag_alert") {
+        el.dataset.kind = "diag";
+        el.dataset.level = msg.data?.level || "warn";
+        el.innerHTML = `${icon("alert")}<span><b>System</b> · ${esc(msg.text || msg.data?.facts || "")}</span><time>${hhmm()}</time>`;
       } else if (msg.kind === "motion") {
         el.dataset.kind = "motion";
         el.innerHTML = `${icon("eye")}<span><b>Motion detected</b></span><time>${hhmm()}</time>`;

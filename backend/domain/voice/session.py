@@ -50,6 +50,7 @@ class Session:
         self.settings = settings
         self.agent = agent
         self._events_task: asyncio.Task | None = None
+        self._diag_task: asyncio.Task | None = None  # Systems view feed
         self.tunables = Tunables.from_settings(settings)
 
         self.fsm = Fsm(self.send)
@@ -102,6 +103,7 @@ class Session:
         self.dropped_frames = 0
         self._expected_seq: int | None = None
         self._last_level = float("-inf")
+        self._last_frame_at = 0.0  # monotonic; the mic counts as live if recent
         self.active_turn_id = 0
         self._reply_task: asyncio.Task | None = None
         self._closing = False
@@ -154,7 +156,9 @@ class Session:
         async def announce(event) -> bool:
             # State first, so the brain's tts_begin finds us out of IDLE.
             await self.fsm.to(State.THINKING, f"event_{event.kind}")
-            if await self.brain.announce(event.say):
+            spoken = (await self.brain.speak(event.text) if event.text
+                      else await self.brain.announce(event.say))
+            if spoken:
                 log.info("announcing %s", event.kind)
                 return True
             await self.fsm.to(State.IDLE, "announce_declined")
@@ -176,12 +180,14 @@ class Session:
             while True:
                 event = await q.get()
                 await self.send(event.to_wire())
-                if not (event.say and self.brain is not None):
+                if not ((event.say or event.text) and self.brain is not None):
                     continue
                 # With several tabs open, the web agent's results and
-                # questions belong to the one you were talking to.
+                # questions -- and system alerts -- belong to the one you
+                # were talking to, not every tab at once.
                 active = self.agent.active_session
-                if event.kind.startswith("web_") and active is not None and active is not self:
+                if (event.kind.startswith(("web_", "diag_")) and active is not None
+                        and active is not self):
                     continue
                 if self.fsm.is_(State.IDLE) and not later:
                     await announce(event)
@@ -193,6 +199,46 @@ class Session:
             if waiter is not None:
                 waiter.cancel()
             self.agent.events.unsubscribe(q)
+
+    # -- diagnostics feed -------------------------------------------------
+
+    def _voice_health(self) -> dict:
+        """This connection's ears and mouth, for the Systems view."""
+        brain = self.brain
+        age = time.monotonic() - self._last_frame_at if self._last_frame_at else None
+        return {
+            "brain": brain.name if brain else None,
+            "brain_error": self.brain_error,
+            "state": self.fsm.state.name.lower(),
+            "stt": getattr(getattr(brain, "stt", None), "name", None)
+                   or ("gemini_live" if brain and brain.handles_turn_detection else None),
+            "tts": getattr(getattr(brain, "tts", None), "name", None)
+                   or ("gemini_live" if brain and brain.handles_turn_detection else None),
+            "llm": (f"{brain.llm.name}:{brain.llm.model}" if getattr(brain, "llm", None)
+                    else (self.settings.gemini_live_model if brain and brain.handles_turn_detection else None)),
+            "mic": "live" if age is not None and age < 3 else "silent",
+            "frames_in": self.frames_in,
+            "dropped_frames": self.dropped_frames,
+            "noise_dbfs": round(self.noise.value, 1) if math.isfinite(self.noise.value) else None,
+        }
+
+    async def _watch_diag(self) -> None:
+        diag = self.agent.diag
+        q = diag.subscribe()
+        try:
+            while True:
+                snap = await q.get()
+                await self.send({"t": "diag", "snap": {**snap, "voice": self._voice_health()}})
+        finally:
+            diag.unsubscribe(q)
+
+    def _set_diag_feed(self, on: bool) -> None:
+        running = self._diag_task is not None and not self._diag_task.done()
+        if on and not running and self.agent is not None and self.agent.diag is not None:
+            self._diag_task = asyncio.create_task(self._watch_diag())
+        elif not on and running:
+            self._diag_task.cancel()
+            self._diag_task = None
 
     async def _brain_send(self, msg: dict) -> None:
         """Brain -> client, with the FSM listening in.
@@ -356,6 +402,7 @@ class Session:
         self.frames_in += 1
         self._last_level = rms_dbfs(pcm)
         now = time.monotonic()
+        self._last_frame_at = now
 
         if self.capturing:
             self.utterance.append(pcm.copy())
@@ -809,6 +856,14 @@ class Session:
                 answer = str(msg.get("answer") or "").strip()[:500]
                 if answer:
                     asyncio.create_task(web.reply(answer))
+        elif kind == "diag_sub":
+            # The Systems view is open (on) or closed: stats only flow while
+            # someone is looking at them.
+            if self.agent is None or self.agent.diag is None:
+                await self.send({"t": "diag", "snap": None,
+                                 "error": "diagnostics disabled (DIAG_ENABLED=false)"})
+                return
+            self._set_diag_feed(bool(msg.get("on")))
         elif kind == "stop_audio":
             self._cancel_drain()
             await self.cancel_turn("user_stop")
@@ -835,6 +890,7 @@ class Session:
             self.agent.active_session = None
         if self._events_task is not None:
             self._events_task.cancel()
+        self._set_diag_feed(False)
         if self.brain is not None:
             with contextlib.suppress(Exception):
                 await self.brain.close()

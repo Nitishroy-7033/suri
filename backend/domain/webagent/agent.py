@@ -56,7 +56,7 @@ How to work:
 def _fn(name: str, description: str, props: dict | None = None, required: list | None = None) -> dict:
     d = {"name": name, "description": description}
     if props:
-        d["parameters_json_schema"] = {"type": "object", "properties": props, "required": required or []}
+        d["parameters"] = {"type": "object", "properties": props, "required": required or []}
     return d
 
 
@@ -138,9 +138,9 @@ class WebAgent:
     @property
     def llm(self):
         if self._llm is None:
-            from .llm import GeminiAgentLlm
+            from .llm import WebAgentLlm
 
-            self._llm = GeminiAgentLlm(self.settings)
+            self._llm = WebAgentLlm(self.runtime.models.get("web_agent"))
         return self._llm
 
     @property

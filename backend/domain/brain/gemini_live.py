@@ -210,6 +210,13 @@ class GeminiLiveBrain(Brain):
         )
         return True
 
+    async def speak(self, text: str) -> bool:
+        # Live is the only mouth in this mode, so it reads the words out; the
+        # wording itself came from another agent's model.
+        return await self.announce(
+            "Read this aloud to the user exactly as written, adding nothing "
+            f"and without calling any tools: {text}")
+
     async def ask(self, text: str) -> bool:
         if self._turn_open or self._tool_tasks:
             return False

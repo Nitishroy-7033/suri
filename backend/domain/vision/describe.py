@@ -1,45 +1,38 @@
 """Describe an image in words.
 
-Used by the `look` tool. It turns a camera frame into text, so it works the
-same whichever brain asked. The pipeline's Groq LLM cannot see, and handing
-Gemini Live a frame mid-turn is less reliable than asking a vision model a
-direct question and passing the answer back as a tool result.
+Used by the `look` tool and the web agent's screenshots. It turns a picture
+into text, so it works the same whichever brain asked. The voice LLM may not
+see, and handing Gemini Live a frame mid-turn is less reliable than asking a
+vision model a direct question and passing the answer back as a tool result.
 
-Uses the ordinary (non-live) Gemini endpoint, so it shares the free key the
-Live brain already uses.
+Which model is VISION_AGENT__PROVIDER / __MODEL (Gemini Flash by default);
+any provider in core/models that accepts images works.
 """
 
 from __future__ import annotations
 
 import logging
 
-from ...config import Settings
-
 log = logging.getLogger("jarvis.vision")
 
 
-class GeminiVision:
-    name = "gemini"
+class Vision:
+    def __init__(self, model) -> None:
+        self.model = model  # a FallbackModel from runtime.models
 
-    def __init__(self, settings: Settings) -> None:
-        from google import genai
-
-        if not settings.gemini_api_key:
-            raise RuntimeError("GEMINI_API_KEY is not set")
-        self.settings = settings
-        self._client = genai.Client(api_key=settings.gemini_api_key)
+    @property
+    def name(self) -> str:
+        return self.model.name
 
     async def describe(self, jpeg: bytes, question: str) -> str:
-        from google.genai import types
-
         prompt = (
             f"{question.strip() or 'Describe what you see.'}\n"
             "Answer in two or three plain sentences, as if telling someone who "
             "cannot see the image. No markdown."
         )
-        resp = await self._client.aio.models.generate_content(
-            model=self.settings.vision_model,
-            contents=[types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"),
-                      prompt],
-        )
-        return (resp.text or "").strip() or "I could not make anything out."
+        result = await self.model.complete(
+            [{"role": "user", "content": [
+                {"type": "image", "data": jpeg, "mime": "image/jpeg"},
+                {"type": "text", "text": prompt}]}],
+            max_tokens=400)
+        return result.text or "I could not make anything out."

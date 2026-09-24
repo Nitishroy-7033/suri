@@ -1,8 +1,8 @@
 """The camera: looking on request, and watching for motion.
 
 Only offered when CAMERA_ENABLED=true and OpenCV is installed. Looking also
-needs a vision model (GEMINI_API_KEY); motion watching does not -- it is
-local frame differencing and never sends anything anywhere.
+needs a vision model (VISION_AGENT__*, Gemini by default); motion watching
+does not -- it is local frame differencing and never sends anything anywhere.
 """
 
 from __future__ import annotations
@@ -17,8 +17,7 @@ def _no_camera(ctx: ToolContext) -> str | None:
 
 
 def _no_vision(ctx: ToolContext) -> str | None:
-    return _no_camera(ctx) or (None if ctx.settings.gemini_api_key
-                               else "no GEMINI_API_KEY for the vision model")
+    return _no_camera(ctx) or ctx.runtime.models.available("vision_agent")
 
 
 @tool(

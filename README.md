@@ -78,8 +78,13 @@ backend/
   main.py              FastAPI app; builds the AgentRuntime once at startup
   config.py            every knob, from .env
   core/                shared plumbing, no capability-specific code
-    runtime.py           owns memory, camera, event bus; hands out tool registries
+    runtime.py           owns memory, camera, event bus, models; hands out tool registries
     events.py            proactive alerts (timers, motion) -> spoken when idle
+    models/              every agent's model, any provider (see "Models" below)
+      base.py              ChatModel, ToolCall, Usage, ModelError
+      providers/           openai_compat, gemini, ollama, anthropic
+      fallback.py          primary + fallbacks, skips ones that are down
+      hub.py               runtime.models.get("<agent>") from config profiles
     tools/
       base.py              Tool, ToolContext, @tool
       registry.py          schemas for both brains, safe execution
@@ -96,8 +101,56 @@ backend/
     memory/              conversation.py (short-term), store.py (long-term)
                          tools.py: remember, recall, forget
     system/              tools.py: get_datetime, set_timer, open_app, open_url
+    diagnostics/         sampler.py alerts.py metrics.py agent.py
+                         tools.py: system_status, unload_model
 data/                  memory.json (created on first "remember")
 ```
+
+### Models: one per agent, any provider
+
+Each agent has its own model profile in `.env` -- provider, model name, key:
+
+```
+DIAGNOSTICS_AGENT__PROVIDER=ollama
+DIAGNOSTICS_AGENT__MODEL=qwen2.5:1.5b
+WEB_AGENT__PROVIDER=openai
+WEB_AGENT__MODEL=gpt-5-mini
+WEB_AGENT__MODEL_KEY=sk-...
+WEB_AGENT__FALLBACK=[{"provider":"groq","model":"openai/gpt-oss-20b"}]
+```
+
+The agents are `voice_llm` (the pipeline brain), `web_agent`, `vision_agent`
+and `diagnostics_agent`. Providers: `openai`, `groq`, `openrouter`,
+`openai_compat` (any OpenAI-style server via `BASE_URL`: LM Studio, vLLM...),
+`gemini`, `ollama`, `anthropic`. Set only what you want to change; the rest
+keeps its default. A fallback runs when the one before it is rate-limited,
+overloaded or down, and a model that failed that way is skipped for a few
+minutes. Gemini Live, the realtime voice brain, is separate
+(`GEMINI_LIVE_MODEL`).
+
+In code, an agent asks `runtime.models.get("<agent>")` for its model and gets
+the same `stream()` / `complete()` interface whatever the provider. To add a
+provider, subclass `ChatModel` in `core/models/providers/` and add it to
+`build_model` in `hub.py`.
+
+### Diagnostics
+
+The **Systems** view (the gauge in the layout switch, or `V`) shows the
+laptop -- CPU and cores, RAM, GPU and VRAM, battery, disk, network, the
+heaviest processes -- and Jarvis itself: each agent's model with tokens per
+second and latency, the mic / STT / TTS, Ollama's loaded models, storage, and
+recent warnings and errors. Stats only flow while the view is open.
+
+"Jarvis, status report" calls `system_status`, which the diagnostics agent
+answers with its own small model. Threshold alerts (battery, temperature,
+RAM, VRAM, disk, network) are plain rules, so they cost nothing; the
+diagnostics model only words them, and a fixed sentence is spoken if it is
+unavailable. Other agents' words are never re-phrased by the voice: an
+`Event(text=...)` is spoken as written.
+
+Windows gives no CPU temperature without admin tools, so it shows "n/a". GPU
+load and VRAM come from NVML on NVIDIA and from Windows' GPU performance
+counters otherwise (no GPU temperature then).
 
 ### Adding a capability
 
@@ -207,6 +260,8 @@ the published RTF figures.
 .venv\Scripts\python.exe tests\test_history.py    # interruption truncation
 .venv\Scripts\python.exe tests\test_barge.py      # barge-in guards
 .venv\Scripts\python.exe tests\test_agent.py      # tools, memory, motion, tool loop
+.venv\Scripts\python.exe tests\test_models.py     # model profiles, providers, fallbacks
+.venv\Scripts\python.exe tests\test_diagnostics.py # alert rules, sampler, status reports
 .venv\Scripts\python.exe tests\probe_tools.py     # live: both brains call real tools
 .venv\Scripts\python.exe tests\probe_phase0.py    # live: audio plumbing
 .venv\Scripts\python.exe tests\probe_phase2.py    # live: a full spoken turn

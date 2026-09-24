@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .core.runtime import AgentRuntime
 from .config import settings
+from .domain.diagnostics.metrics import log_ring
 from .domain.voice.session import Session
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
@@ -27,6 +28,8 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("jarvis")
+# Keeps the last warnings/errors in memory for the Systems view.
+log_ring()
 
 
 @asynccontextmanager
@@ -92,5 +95,20 @@ async def ws_endpoint(ws: WebSocket) -> None:
     await Session(ws, settings, ws.app.state.agent).run()
 
 
+class FrontendFiles(StaticFiles):
+    """The frontend, always revalidated.
+
+    Without a Cache-Control header Chrome guesses how long to keep each file,
+    and after an update it can pair the new index.html with a stale
+    styles.css or module -- a half-styled page. "no-cache" still caches, but
+    asks first; an unchanged file costs a 304.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # Mounted last so /ws and /healthz win. html=True serves index.html at /.
-app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+app.mount("/", FrontendFiles(directory=FRONTEND_DIR, html=True), name="frontend")

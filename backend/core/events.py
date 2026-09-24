@@ -25,9 +25,12 @@ class Event:
     say: str | None = None
     data: dict = field(default_factory=dict)
     ts: float = field(default_factory=time.time)
+    #: Finished words to speak as they are -- another agent's model already
+    #: phrased them, so the voice brain must not reword. Wins over `say`.
+    text: str | None = None
 
     def to_wire(self) -> dict:
-        return {"t": "event", "kind": self.kind, "say": self.say,
+        return {"t": "event", "kind": self.kind, "say": self.say, "text": self.text,
                 "data": self.data, "ts": self.ts}
 
 
@@ -46,7 +49,7 @@ class EventBus:
 
     def publish(self, event: Event) -> None:
         # Truncated: some events carry a screenshot (web_frame).
-        log.info("event %s: %s", event.kind, str(event.say or event.data)[:200])
+        log.info("event %s: %s", event.kind, str(event.text or event.say or event.data)[:200])
         for q in self._subs:
             try:
                 q.put_nowait(event)

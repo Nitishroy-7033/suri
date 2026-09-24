@@ -6,6 +6,7 @@ import { createDirector } from "./director.js";
 import { initSettings } from "./settings.js";
 import { MicTest } from "./mictest.js";
 import { createChat } from "./chat.js";
+import { createDiag } from "./diag.js";
 
 // Companion layout: the robot and its state in one pane, the conversation in
 // the other. Voice states become moods, server events become gestures and
@@ -118,6 +119,15 @@ const chat = createChat({
 });
 const errorCard = (text, retry = null) => chat.error(text, retry);
 
+// The Systems view (diag.js). Stats only flow while it is on screen.
+const diag = createDiag($("diag-body"), {
+  send, stamp: $("diag-stamp"),
+});
+diag.setVisible(document.documentElement.dataset.view === "systems");
+new MutationObserver(() => diag.setVisible(document.documentElement.dataset.view === "systems"))
+  .observe(document.documentElement, { attributes: true, attributeFilter: ["data-view"] });
+$("diag-report").onclick = () => ask("Status report");
+
 // ---------- sounds ----------
 
 function tone(freqs, { dur = 0.16, gap = 0, vol = 0.22 } = {}) {
@@ -187,6 +197,7 @@ function connect() {
     connectedFlash(reconnected);
     sendHello();
     if (talkOn) send({ t: "converse", on: true });
+    diag.resubscribe();
   };
   ws.onclose = () => {
     setConn(false, "offline · retrying");
@@ -278,8 +289,12 @@ function onControl(msg) {
       director.poke();
       if (msg.kind?.startsWith("web_")) { webEvent(msg); break; }
       chat.event(msg);
+      if (msg.kind === "diag_alert") { diag.alert(msg); bot.flash(msg.data?.level === "info" ? "happy" : "alert", 2400); }
       if (msg.kind === "timer") director.play("wave");
       else if (msg.kind === "motion") bot.flash("alert", 2000);
+      break;
+    case "diag":
+      diag.update(msg.snap, msg.error);
       break;
     case "follow_up":
       director.endReply();

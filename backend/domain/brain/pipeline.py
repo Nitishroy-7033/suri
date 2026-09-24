@@ -85,17 +85,20 @@ class PipelineBrain(Brain):
     async def start(self) -> None:
         import httpx
 
-        from .llm import GroqLlm, OllamaLlm
+        from ...core.models import ModelHub
         from ..voice.stt import GroqStt
         from ..voice.tts import EdgeTts, GroqTts
 
         self._client = httpx.AsyncClient(http2=False)
         self.stt = GroqStt(self.settings, self._client)
 
-        try:
-            self.llm = GroqLlm(self.settings, self._client)
-        except RuntimeError:
-            self.llm = OllamaLlm(self.settings, self._client)
+        # Whatever VOICE_LLM__* says, with its fallbacks; offline keeps to
+        # the local ones (Ollama, LM Studio...).
+        hub = self.agent.models if self.agent is not None else ModelHub(self.settings)
+        self.llm = hub.get("voice_llm", local_only=self.settings.jarvis_mode == "offline")
+        why = self.llm.unavailable()
+        if why:
+            raise RuntimeError(f"no voice LLM available: {why}")
 
         self.tts = await self._pick_tts(GroqTts, EdgeTts)
         log.info("pipeline: stt=%s llm=%s(%s) tts=%s tools=%s", self.stt.name,
@@ -253,6 +256,28 @@ class PipelineBrain(Brain):
         except Exception as exc:
             await self._turn_failed(exc)
 
+    async def speak(self, text: str) -> bool:
+        if self.turn is not None and self.turn.task and not self.turn.task.done():
+            return False
+        self.active_turn_id += 1
+        turn = Turn(id=self.active_turn_id)
+        self.turn = turn
+        turn.task = asyncio.create_task(self._run_speak(turn, text))
+        return True
+
+    async def _run_speak(self, turn: Turn, text: str) -> None:
+        """Words someone else already chose: straight to TTS, no LLM call."""
+        t0 = time.perf_counter()
+        try:
+            await self._speak_reply(turn, t0, fixed_text=text)
+            if turn.reply_text.strip():
+                self.history.add_assistant(turn.reply_text)
+            await self.send_json({"t": "turn_complete"})
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await self._turn_failed(exc)
+
     async def ask(self, text: str) -> bool:
         if self.turn is not None and self.turn.task and not self.turn.task.done():
             return False
@@ -308,7 +333,8 @@ class PipelineBrain(Brain):
                               "preview": outcome.output[:1200]})
         return outcome
 
-    async def _speak_reply(self, turn: Turn, t_stt: float) -> None:
+    async def _speak_reply(self, turn: Turn, t_stt: float,
+                           fixed_text: str | None = None) -> None:
         """Three stages in one TaskGroup: tokens -> clauses -> audio.
 
         Bounded queues on purpose. Without them a long reply would be fully
@@ -363,6 +389,14 @@ class PipelineBrain(Brain):
             Each round's text is spoken as it streams, so "let me look that
             up" plays while the search runs rather than after it.
             """
+            if fixed_text is not None:
+                try:
+                    await say(fixed_text)
+                    turn.reply_text = fixed_text
+                    await flush()
+                finally:
+                    await jobs.put(None)
+                return
             messages = self.history.for_llm()
             tools = self.tools.openai_tools() if self.tools else None
             max_rounds = self.settings.max_tool_rounds
@@ -455,3 +489,8 @@ class PipelineBrain(Brain):
                     (first_audio[0] - t_stt) * 1000, since("llm_first"),
                     since("clause_first"), since("tts_start"), since("tts_done"),
                 )
+                if self.agent is not None and self.agent.diag is not None:
+                    self.agent.diag.metrics.record_turn(
+                        first_audio_ms=(first_audio[0] - t_stt) * 1000,
+                        llm_first_ms=(marks["llm_first"] - t_stt) * 1000 if "llm_first" in marks else None,
+                        spoken_s=turn.samples_sent / OUT_RATE, brain=self.name)
